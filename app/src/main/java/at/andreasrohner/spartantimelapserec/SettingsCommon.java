@@ -230,7 +230,16 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 		prefCamera.setEntryValues(camListInd);
 
 		int camId = RecSettings.getInteger(prefs, "pref_camera", 0);
-		prefCamera.setSummary(camList[camId]);
+		if (camList == null || camList.length == 0 || camId < 0 || camId >= camList.length) {
+			camId = 0;
+			prefs.edit().putString("pref_camera", "0").apply();
+		}
+		if (camList == null || camList.length == 0 || camId < 0 || camId >= camList.length) {
+			prefCamera.setSummary(null);
+			prefCamera.setEnabled(false);
+		} else {
+			prefCamera.setSummary(camList[camId]);
+		}
 	}
 
 	private void updatePrefStatus(SharedPreferences prefs) {

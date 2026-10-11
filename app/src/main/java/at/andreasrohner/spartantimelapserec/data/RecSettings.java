@@ -147,7 +147,29 @@ public class RecSettings {
 		videoEncodingBitRate = getInteger(prefs,"pref_video_encoding_br", 0);
 		cameraId = getInteger(prefs, "pref_camera", 0);
 		projectName = prefs.getString("pref_project_title", "");
-		projectPath = Environment.getExternalStoragePublicDirectory(DIRECTORY_PICTURES).getPath();
+		String basePath = null;
+		try {
+			java.io.File extDir = context.getExternalFilesDir(DIRECTORY_PICTURES);
+			if (extDir != null)
+				basePath = extDir.getPath();
+		} catch (Exception e) {
+			android.util.Log.w("TimeLapseCamera", "getExternalFilesDir failed, using internal storage", e);
+		}
+		if (basePath == null)
+			basePath = context.getFilesDir().getPath();
+		projectPath = basePath;
+		try {
+			java.io.File baseDir = new java.io.File(projectPath);
+			if (!baseDir.exists() && !baseDir.mkdirs()) {
+				android.util.Log.w("TimeLapseCamera", "Failed to make directory: " + projectPath + ", falling back to internal storage");
+				projectPath = context.getFilesDir().getPath();
+			}
+		} catch (Exception e) {
+			android.util.Log.w("TimeLapseCamera", "mkdirs failed, falling back to internal storage", e);
+			try {
+				projectPath = context.getFilesDir().getPath();
+			} catch (Exception ignored) {}
+		}
 
 		recMode = getRecMode(prefs, "pref_rec_mode", RecMode.VIDEO_TIME_LAPSE);
 
