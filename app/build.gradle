@@ -10,7 +10,7 @@ android {
         applicationId "org.woheller69.TimeLapseCam"
         minSdk 23
         targetSdk 35
-        versionCode 21
+        versionCode 22
         versionName "2.1"
 
     }
