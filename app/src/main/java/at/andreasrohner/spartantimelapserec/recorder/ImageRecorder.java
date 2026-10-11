@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Set;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
@@ -116,9 +118,34 @@ public class ImageRecorder extends Recorder implements Runnable,
 		try {
 			File file = getOutputFile("jpg");
 			currentRecordedImage = file;
+			int frameNumber = recordedImagesCount + 1;
+			Bitmap decoded = null;
+			Bitmap stamped = null;
+			if (mSettings.isOverlayEnabled()) {
+				try {
+					decoded = BitmapFactory.decodeByteArray(data, 0, data.length);
+					if (decoded != null) {
+						stamped = TimestampOverlay.applyOverlay(decoded,
+								mSettings, frameNumber, System.currentTimeMillis());
+					}
+				} catch (Throwable t) {
+					// Never let stamping break the capture; fall back to raw bytes.
+					stamped = null;
+				}
+			}
 			FileOutputStream out = new FileOutputStream(file);
-			out.write(data);
-			out.close();
+			try {
+				if (stamped != null) {
+					stamped.compress(Bitmap.CompressFormat.JPEG,
+							mSettings.getJpegQuality(), out);
+				} else {
+					out.write(data);
+				}
+			} finally {
+				out.close();
+			}
+			if (stamped != null && stamped != decoded)
+				decoded.recycle();
 			mWaitCamReady = false;
 			recordedImagesCount++;
 			scheduleNextPicture();

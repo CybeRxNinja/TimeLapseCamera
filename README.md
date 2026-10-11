@@ -54,7 +54,42 @@ level or disk space is low.
 * Schedule recording on specific date
 * Preview with selected resolution
 * Disable shutter sound
+* CCTV-style date/time stamp burned into still images (configurable)
+
+## Timestamp overlay (CCTV style)
+
+When enabled (Settings → "Timestamp overlay (CCTV style)", on by default),
+every captured still image gets a date/time stamp drawn onto the frame,
+like a CCTV camera.
+
+| Option | Key | Choices |
+| --- | --- | --- |
+| Burn date/time into photos | `pref_overlay_enabled` | on (default) / off |
+| Position | `pref_overlay_position` | top-left, top-right, bottom-left, bottom-right (default), center |
+| Size | `pref_overlay_size` | small, medium (default), large |
+| Content | `pref_overlay_content` | date+time (default), date, time, date+time+frame counter |
+| Format | `pref_overlay_format` | `SimpleDateFormat` presets (default `yyyy-MM-dd HH:mm:ss`) or custom |
+| Custom format pattern | `pref_overlay_custom_format` | any `SimpleDateFormat` pattern, used when format is Custom (invalid patterns fall back to the default) |
+| Text color | `pref_overlay_text_color` | white (default), yellow, green, cyan |
+| Background shading | `pref_overlay_background` | transparent, 40%, 60% (default), 80% black pill behind the text |
+
+Which capture modes are stamped:
+
+* `IMAGE_TIME_LAPSE` ("Time Lapsed Images (JPG)") — **stamped**, including the
+  power-saving variant (`PowerSavingImageRecorder` inherits
+  `ImageRecorder.onPictureTaken`). Stamping happens in
+  `recorder/ImageRecorder.java` (`onPictureTaken`: decode JPEG → draw stamp
+  with `recorder/TimestampOverlay.java` → re-encode with the configured JPEG
+  quality). If stamping ever fails, the original frame is saved unchanged so a
+  capture is never lost.
+* `VIDEO` ("Normal Video (MP4)") and `VIDEO_TIME_LAPSE` ("Time Lapsed Video
+  (MP4)") — **not stamped**. These modes (`recorder/VideoRecorder.java`,
+  `recorder/VideoTimeLapseRecorder.java`) feed the camera straight into
+  `MediaRecorder` with no frame callback, so there is no point where text
+  could be drawn without a Camera2/MediaCodec rewrite.
 
 ## License
 
 Forked from  <a href='https://github.com/zeitgeist87/SpartanTimeLapseRecorder'>zeitgeist87/SpartanTimeLapseRecorder</a> which is published under GPL 3.0
+
+Upstream credit: this fork is based on <a href='https://github.com/woheller69/TimeLapseCamera'>woheller69/TimeLapseCamera</a> (GPL 3.0, LICENSE untouched); the timestamp overlay and release workflow are the changes added here.

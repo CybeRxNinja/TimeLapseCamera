@@ -11,4 +11,84 @@
         <item>IMAGE_TIME_LAPSE</item>
     </string-array>
 
+    <string-array name="pref_overlay_position_entries">
+        <item>Top left</item>
+        <item>Top right</item>
+        <item>Bottom left</item>
+        <item>Bottom right</item>
+        <item>Center</item>
+    </string-array>
+    <string-array name="pref_overlay_position_values">
+        <item>top_left</item>
+        <item>top_right</item>
+        <item>bottom_left</item>
+        <item>bottom_right</item>
+        <item>center</item>
+    </string-array>
+
+    <string-array name="pref_overlay_size_entries">
+        <item>Small</item>
+        <item>Medium</item>
+        <item>Large</item>
+    </string-array>
+    <string-array name="pref_overlay_size_values">
+        <item>small</item>
+        <item>medium</item>
+        <item>large</item>
+    </string-array>
+
+    <string-array name="pref_overlay_content_entries">
+        <item>Date and time</item>
+        <item>Date only</item>
+        <item>Time only</item>
+        <item>Date, time and frame counter</item>
+    </string-array>
+    <string-array name="pref_overlay_content_values">
+        <item>datetime</item>
+        <item>date</item>
+        <item>time</item>
+        <item>datetime_frame</item>
+    </string-array>
+
+    <string-array name="pref_overlay_format_entries">
+        <item>2026-01-31 14:05:22</item>
+        <item>31.01.2026 14:05:22</item>
+        <item>01/31/2026 02:05 PM</item>
+        <item>14:05:22 31-01-2026</item>
+        <item>Custom (see below)</item>
+    </string-array>
+    <string-array name="pref_overlay_format_values">
+        <item>yyyy-MM-dd HH:mm:ss</item>
+        <item>dd.MM.yyyy HH:mm:ss</item>
+        <item>MM/dd/yyyy hh:mm a</item>
+        <item>HH:mm:ss dd-MM-yyyy</item>
+        <item>custom</item>
+    </string-array>
+
+    <string-array name="pref_overlay_text_color_entries">
+        <item>White</item>
+        <item>Yellow</item>
+        <item>Green</item>
+        <item>Cyan</item>
+    </string-array>
+    <string-array name="pref_overlay_text_color_values">
+        <item>#FFFFFF</item>
+        <item>#FFFF00</item>
+        <item>#00FF00</item>
+        <item>#00FFFF</item>
+    </string-array>
+
+    <string-array name="pref_overlay_background_entries">
+        <item>Transparent</item>
+        <item>Light (40%)</item>
+        <item>Medium (60%)</item>
+        <item>Dark (80%)</item>
+    </string-array>
+    <string-array name="pref_overlay_background_values">
+        <item>0</item>
+        <item>40</item>
+        <item>60</item>
+        <item>80</item>
+    </string-array>
+
 </resources>

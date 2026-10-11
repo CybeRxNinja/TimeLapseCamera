@@ -85,6 +85,20 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 
 	private IpInformation prefIpInformation;
 
+	private ListPreference prefOverlayPosition;
+
+	private ListPreference prefOverlaySize;
+
+	private ListPreference prefOverlayContent;
+
+	private ListPreference prefOverlayFormat;
+
+	private EditTextPreference prefOverlayCustomFormat;
+
+	private ListPreference prefOverlayTextColor;
+
+	private ListPreference prefOverlayBackground;
+
 	private int calcGcd(int a, int b) {
 		if (b == 0)
 			return a;
@@ -261,6 +275,33 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 			prefCamera.setSummary(null);
 			prefCamera.setEnabled(false);
 		}
+
+		updateOverlayPrefStatus(prefs);
+	}
+
+	private void setOverlaySummaries(SharedPreferences prefs) {
+		prefOverlayPosition.setSummary(prefOverlayPosition.getEntry());
+		prefOverlaySize.setSummary(prefOverlaySize.getEntry());
+		prefOverlayContent.setSummary(prefOverlayContent.getEntry());
+		prefOverlayFormat.setSummary(prefOverlayFormat.getEntry());
+		prefOverlayTextColor.setSummary(prefOverlayTextColor.getEntry());
+		prefOverlayBackground.setSummary(prefOverlayBackground.getEntry());
+		String custom = prefs.getString("pref_overlay_custom_format", "");
+		if (custom == null || custom.isEmpty())
+			prefOverlayCustomFormat.setSummary(context.getString(R.string.pref_overlay_custom_format_hint));
+		else
+			prefOverlayCustomFormat.setSummary(custom);
+	}
+
+	private void updateOverlayPrefStatus(SharedPreferences prefs) {
+		boolean enabled = prefs.getBoolean("pref_overlay_enabled", true);
+		prefOverlayPosition.setEnabled(enabled);
+		prefOverlaySize.setEnabled(enabled);
+		prefOverlayContent.setEnabled(enabled);
+		prefOverlayFormat.setEnabled(enabled);
+		prefOverlayCustomFormat.setEnabled(enabled);
+		prefOverlayTextColor.setEnabled(enabled);
+		prefOverlayBackground.setEnabled(enabled);
 	}
 
 	private void setRecMode(SharedPreferences prefs) {
@@ -390,6 +431,26 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 				prefVideoEncodingBitRate.setText("");  //show hint again
 			}
 			prefVideoEncodingBitRate.setSummary(RecSettings.getInteger(prefs, "pref_video_encoding_br", 0) == 0 ? context.getString(R.string.encode_best) : context.getString(R.string.format_bps, prefs.getString("pref_video_encoding_br", "0")));
+		} else if (key.equals("pref_overlay_position")) {
+			prefOverlayPosition.setSummary(prefOverlayPosition.getEntry());
+		} else if (key.equals("pref_overlay_size")) {
+			prefOverlaySize.setSummary(prefOverlaySize.getEntry());
+		} else if (key.equals("pref_overlay_content")) {
+			prefOverlayContent.setSummary(prefOverlayContent.getEntry());
+		} else if (key.equals("pref_overlay_format")) {
+			prefOverlayFormat.setSummary(prefOverlayFormat.getEntry());
+		} else if (key.equals("pref_overlay_custom_format")) {
+			String custom = prefs.getString("pref_overlay_custom_format", "");
+			if (custom == null || custom.isEmpty())
+				prefOverlayCustomFormat.setSummary(context.getString(R.string.pref_overlay_custom_format_hint));
+			else
+				prefOverlayCustomFormat.setSummary(custom);
+		} else if (key.equals("pref_overlay_text_color")) {
+			prefOverlayTextColor.setSummary(prefOverlayTextColor.getEntry());
+		} else if (key.equals("pref_overlay_background")) {
+			prefOverlayBackground.setSummary(prefOverlayBackground.getEntry());
+		} else if (key.equals("pref_overlay_enabled")) {
+			updateOverlayPrefStatus(prefs);
 		} else if (key.equals("pref_restapi_enabled")) {
 			startStopRestApiServer();
 		} else if (key.equals("pref_restapi_port")) {
@@ -452,6 +513,13 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 		prefCameraTriggerDelay = (SeekBarPreference) screen.findPreference("pref_camera_trigger_delay");
 		prefFlash = (SwitchPreference) screen.findPreference("pref_flash");
 		prefIpInformation = (IpInformation) screen.findPreference("pref_restapi_information");
+		prefOverlayPosition = (ListPreference) screen.findPreference("pref_overlay_position");
+		prefOverlaySize = (ListPreference) screen.findPreference("pref_overlay_size");
+		prefOverlayContent = (ListPreference) screen.findPreference("pref_overlay_content");
+		prefOverlayFormat = (ListPreference) screen.findPreference("pref_overlay_format");
+		prefOverlayCustomFormat = (EditTextPreference) screen.findPreference("pref_overlay_custom_format");
+		prefOverlayTextColor = (ListPreference) screen.findPreference("pref_overlay_text_color");
+		prefOverlayBackground = (ListPreference) screen.findPreference("pref_overlay_background");
 
 		setZoomRange(prefs);
 		setExposureCompRange(prefs);
@@ -485,6 +553,8 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 		prefZoom.setSummary(Integer.toString(prefZoom.getmValue()));
 		prefCameraInitDelay.setSummary(formatTime(prefCameraInitDelay.getmValue()));
 		prefCameraTriggerDelay.setSummary(formatTime(prefCameraTriggerDelay.getmValue()));
+
+		setOverlaySummaries(prefs);
 
 		updatePrefStatus(prefs);
 	}

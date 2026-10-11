@@ -91,4 +91,17 @@
     <string name="pref_restapi_connectioninfo_title">Connection Info</string>
     <string name="error_no_ip_refresh">No IP! Tap to refresh.</string>
     <string name="notification_restapi">REST API Running</string>
+    <string name="pref_overlay_category">Timestamp overlay (CCTV style)</string>
+    <string name="pref_overlay_enabled">Burn date/time into photos</string>
+    <string name="pref_overlay_enabled_summ">Draw a CCTV-style timestamp onto every captured still image (JPEG timelapse modes only)</string>
+    <string name="pref_overlay_position">Overlay position</string>
+    <string name="pref_overlay_size">Overlay size</string>
+    <string name="pref_overlay_content">Overlay content</string>
+    <string name="pref_overlay_format">Date/time format</string>
+    <string name="pref_overlay_format_summ">Preset pattern (SimpleDateFormat) or Custom</string>
+    <string name="pref_overlay_custom_format">Custom format pattern</string>
+    <string name="pref_overlay_custom_format_summ">SimpleDateFormat pattern, used when the format is Custom</string>
+    <string name="pref_overlay_custom_format_hint">yyyy-MM-dd HH:mm:ss</string>
+    <string name="pref_overlay_text_color">Text color</string>
+    <string name="pref_overlay_background">Background shading</string>
 </resources>

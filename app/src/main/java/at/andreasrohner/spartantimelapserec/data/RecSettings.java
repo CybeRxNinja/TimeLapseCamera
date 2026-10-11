@@ -51,6 +51,14 @@ public class RecSettings {
 	private int cameraTriggerDelay;
 	private boolean cameraFlash;
 	private int videoEncodingBitRate;
+	private boolean overlayEnabled;
+	private String overlayPosition;
+	private String overlaySize;
+	private String overlayContent;
+	private String overlayFormat;
+	private String overlayCustomFormat;
+	private String overlayTextColor;
+	private String overlayBackground;
 
 	public static int getInteger(SharedPreferences prefs, String key, int def) {
 		try {
@@ -156,6 +164,14 @@ public class RecSettings {
 		cameraInitDelay = prefs.getInt("pref_camera_init_delay", 500);
 		cameraTriggerDelay = prefs.getInt("pref_camera_trigger_delay", 1000);
 		cameraFlash = prefs.getBoolean("pref_flash",false);
+		overlayEnabled = prefs.getBoolean("pref_overlay_enabled", true);
+		overlayPosition = prefs.getString("pref_overlay_position", "bottom_right");
+		overlaySize = prefs.getString("pref_overlay_size", "medium");
+		overlayContent = prefs.getString("pref_overlay_content", "datetime");
+		overlayFormat = prefs.getString("pref_overlay_format", "yyyy-MM-dd HH:mm:ss");
+		overlayCustomFormat = prefs.getString("pref_overlay_custom_format", "");
+		overlayTextColor = prefs.getString("pref_overlay_text_color", "#FFFFFF");
+		overlayBackground = prefs.getString("pref_overlay_background", "60");
 		// negative value disables the limit
 		if (stopRecAfter >= 47 * 60)
 			stopRecAfter = -1;
@@ -343,4 +359,20 @@ public class RecSettings {
 	public boolean getCameraFlash() {return cameraFlash;}
 
 	public int getVideoEncodingBitRate() {return  videoEncodingBitRate;}
+
+	public boolean isOverlayEnabled() { return overlayEnabled; }
+
+	public String getOverlayPosition() { return overlayPosition; }
+
+	public String getOverlaySize() { return overlaySize; }
+
+	public String getOverlayContent() { return overlayContent; }
+
+	public String getOverlayFormat() { return overlayFormat; }
+
+	public String getOverlayCustomFormat() { return overlayCustomFormat; }
+
+	public String getOverlayTextColor() { return overlayTextColor; }
+
+	public String getOverlayBackground() { return overlayBackground; }
 }

@@ -81,6 +81,62 @@
             android:title="@string/pref_mute_shutter" />
     </PreferenceCategory>
 
+    <PreferenceCategory android:title="@string/pref_overlay_category" >
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:key="pref_overlay_enabled"
+            android:summary="@string/pref_overlay_enabled_summ"
+            android:title="@string/pref_overlay_enabled" />
+        <ListPreference
+            android:defaultValue="bottom_right"
+            android:dialogTitle="@string/pref_overlay_position"
+            android:entries="@array/pref_overlay_position_entries"
+            android:entryValues="@array/pref_overlay_position_values"
+            android:key="pref_overlay_position"
+            android:title="@string/pref_overlay_position" />
+        <ListPreference
+            android:defaultValue="medium"
+            android:dialogTitle="@string/pref_overlay_size"
+            android:entries="@array/pref_overlay_size_entries"
+            android:entryValues="@array/pref_overlay_size_values"
+            android:key="pref_overlay_size"
+            android:title="@string/pref_overlay_size" />
+        <ListPreference
+            android:defaultValue="datetime"
+            android:dialogTitle="@string/pref_overlay_content"
+            android:entries="@array/pref_overlay_content_entries"
+            android:entryValues="@array/pref_overlay_content_values"
+            android:key="pref_overlay_content"
+            android:title="@string/pref_overlay_content" />
+        <ListPreference
+            android:defaultValue="yyyy-MM-dd HH:mm:ss"
+            android:dialogTitle="@string/pref_overlay_format"
+            android:dialogMessage="@string/pref_overlay_format_summ"
+            android:entries="@array/pref_overlay_format_entries"
+            android:entryValues="@array/pref_overlay_format_values"
+            android:key="pref_overlay_format"
+            android:title="@string/pref_overlay_format" />
+        <EditTextPreference
+            android:key="pref_overlay_custom_format"
+            android:hint="@string/pref_overlay_custom_format_hint"
+            android:dialogMessage="@string/pref_overlay_custom_format_summ"
+            android:title="@string/pref_overlay_custom_format" />
+        <ListPreference
+            android:defaultValue="#FFFFFF"
+            android:dialogTitle="@string/pref_overlay_text_color"
+            android:entries="@array/pref_overlay_text_color_entries"
+            android:entryValues="@array/pref_overlay_text_color_values"
+            android:key="pref_overlay_text_color"
+            android:title="@string/pref_overlay_text_color" />
+        <ListPreference
+            android:defaultValue="60"
+            android:dialogTitle="@string/pref_overlay_background"
+            android:entries="@array/pref_overlay_background_entries"
+            android:entryValues="@array/pref_overlay_background_values"
+            android:key="pref_overlay_background"
+            android:title="@string/pref_overlay_background" />
+    </PreferenceCategory>
+
     <PreferenceCategory android:title="@string/pref_camera_hardware_settings" >
         <at.andreasrohner.spartantimelapserec.preference.SeekBarPreference
             app:suffix="@string/time_format_msec"
