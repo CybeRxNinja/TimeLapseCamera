@@ -20,7 +20,9 @@ package at.andreasrohner.spartantimelapserec;
 
 import android.Manifest;
 import android.app.AlarmManager;
+import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -38,11 +40,16 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 
 import org.woheller69.freeDroidWarn.FreeDroidWarn;
 
 import at.andreasrohner.spartantimelapserec.data.RecSettings;
 import at.andreasrohner.spartantimelapserec.sensor.MuteShutter;
+
+import java.io.File;
+import java.util.ArrayDeque;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity implements ForegroundService.statusListener {
 
@@ -186,20 +193,82 @@ public class MainActivity extends AppCompatActivity implements ForegroundService
 	}
 
 	public void actionGallery(MenuItem item) {
-		// Point at the real output: the MediaStore collection holding the
-		// published captures; fall back to a generic image viewer.
-		Intent intent = new Intent(Intent.ACTION_VIEW);
-		intent.setDataAndType(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image/*");
-		intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-		if (intent.resolveActivity(getPackageManager()) != null) {
-			startActivity(intent);
-			return;
+		try {
+			File latest = findLatestRecording();
+			if (latest == null) {
+				// strings.xml is owned by another worker: reuse an existing string.
+				Toast.makeText(this, getString(R.string.error_missing_permission), Toast.LENGTH_SHORT).show();
+				return;
+			}
+			String name = latest.getName().toLowerCase(Locale.US);
+			String mime = name.endsWith(".mp4") ? "video/mp4" : "image/jpeg";
+			Uri uri;
+			try {
+				uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", latest);
+			} catch (Exception e) {
+				Toast.makeText(this, getString(R.string.error_missing_permission), Toast.LENGTH_SHORT).show();
+				return;
+			}
+			if (uri == null) {
+				Toast.makeText(this, getString(R.string.error_missing_permission), Toast.LENGTH_SHORT).show();
+				return;
+			}
+			// Open the actual recorded file via FileProvider (file-scheme URIs crash on API 24+).
+			Intent view = new Intent(Intent.ACTION_VIEW);
+			view.setDataAndType(uri, mime);
+			view.setClipData(ClipData.newRawUri("", uri));
+			view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+			if (view.resolveActivity(getPackageManager()) == null) {
+				Toast.makeText(this, getString(R.string.error_missing_permission), Toast.LENGTH_SHORT).show();
+				return;
+			}
+			try {
+				startActivity(Intent.createChooser(view, getString(R.string.action_gallery)));
+			} catch (ActivityNotFoundException e) {
+				Toast.makeText(this, getString(R.string.error_missing_permission), Toast.LENGTH_SHORT).show();
+			}
+		} catch (Throwable t) {
+			try {
+				Toast.makeText(this, getString(R.string.error_missing_permission), Toast.LENGTH_SHORT).show();
+			} catch (Throwable ignored) {
+			}
 		}
-		Intent fallback = new Intent(Intent.ACTION_VIEW);
-		fallback.setType("image/*");
-		fallback.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-		if (fallback.resolveActivity(getPackageManager()) != null)
-			startActivity(fallback);
+	}
+
+	/** Newest recorded still (.jpg) or video (.mp4) under the current project dir, or null. */
+	private File findLatestRecording() {
+		try {
+			RecSettings settings = new RecSettings();
+			settings.load(getApplicationContext(), PreferenceManager.getDefaultSharedPreferences(getApplicationContext()));
+			File base = new File(settings.getProjectPath());
+			String project = settings.getProjectName();
+			File dir = (project != null && project.length() > 0) ? new File(base, project) : base;
+			if (!dir.isDirectory())
+				dir = base;
+			File latest = null;
+			ArrayDeque<File> queue = new ArrayDeque<File>();
+			queue.add(dir);
+			while (!queue.isEmpty()) {
+				File current = queue.poll();
+				File[] children = current.listFiles();
+				if (children == null)
+					continue;
+				for (File child : children) {
+					if (child.isDirectory()) {
+						queue.add(child);
+					} else if (child.isFile() && child.length() > 0) {
+						String childName = child.getName().toLowerCase(Locale.US);
+						if (childName.endsWith(".jpg") || childName.endsWith(".jpeg") || childName.endsWith(".mp4")) {
+							if (latest == null || child.lastModified() > latest.lastModified())
+								latest = child;
+						}
+					}
+				}
+			}
+			return latest;
+		} catch (Throwable t) {
+			return null;
+		}
 	}
 
 	public void actionPreview(MenuItem item) {
