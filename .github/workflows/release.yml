@@ -57,8 +57,8 @@ jobs:
           mkdir -p dist
           SIGNED="dist/app-release.apk"
           "$APKSIGNER" sign --ks /tmp/release.keystore \
-            --ks-pass:env STORE_PASSWORD --ks-key-alias "$KEY_ALIAS" \
-            --key-pass:env KEY_PASSWORD --out "$SIGNED" "$UNSIGNED"
+            --ks-pass env:STORE_PASSWORD --ks-key-alias "$KEY_ALIAS" \
+            --key-pass env:KEY_PASSWORD --out "$SIGNED" "$UNSIGNED"
           "$APKSIGNER" verify --print-certs "$SIGNED"
           rm -f /tmp/release.keystore
       - name: Publish GitHub Release
