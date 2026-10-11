@@ -24,7 +24,6 @@ import android.net.wifi.WifiManager.WifiLock;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
 import android.net.ConnectivityManager;
-import android.widget.Toast;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -175,25 +174,34 @@ public class RestService extends Service implements Runnable {
 		}
 
 		shouldExit = false;
-		int attempts = 10;
-		// The previous server thread may still be cleaning up, wait for it to finish.
-		while (serverThread != null) {
-			Log.w(TAG, "Won't start, server thread exists");
-			if (attempts > 0) {
-				attempts--;
-				try {
-					Thread.sleep(1000);
-				} catch (InterruptedException e) {
-					// Ignore
+		// onStartCommand runs on the main thread: never sleep here (ANR).
+		// Wait for a stale server thread in the background, then start.
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				int attempts = 10;
+				// The previous server thread may still be cleaning up, wait for it to finish.
+				while (serverThread != null) {
+					Log.w(TAG, "Won't start, server thread exists");
+					if (attempts > 0) {
+						attempts--;
+						try {
+							Thread.sleep(1000);
+						} catch (InterruptedException e) {
+							// Ignore
+						}
+					} else {
+						Log.w(TAG, "Server thread already exists");
+						return;
+					}
 				}
-			} else {
-				Log.w(TAG, "Server thread already exists");
-				return START_STICKY;
+				if (shouldExit)
+					return;
+				Log.d(TAG, "Creating server thread");
+				serverThread = new Thread(RestService.this);
+				serverThread.start();
 			}
-		}
-		Log.d(TAG, "Creating server thread");
-		serverThread = new Thread(this);
-		serverThread.start();
+		}).start();
 		return START_STICKY;
 	}
 
@@ -407,7 +415,6 @@ public class RestService extends Service implements Runnable {
 		}
 		if (port < 1024 || port > 65535) {
 			Log.w(TAG, "Port invalid: " + port);
-			Toast.makeText(ctx, ctx.getString(R.string.error_port_invalid), Toast.LENGTH_SHORT).show();
 			port = 8085;
 		}
 

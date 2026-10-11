@@ -200,11 +200,21 @@ public class RecSettings {
 		else
 			stopRecAfter *= 60 * 1000;  //convert to milli seconds
 
-		String[] size = prefs.getString("pref_frame_size", "1920x1080").split("x");
+		String frameSizeValue = "1920x1080";
 		try {
+			frameSizeValue = prefs.getString("pref_frame_size", "1920x1080");
+		} catch (Exception ignored) {
+		}
+		try {
+			if (frameSizeValue == null)
+				throw new IllegalArgumentException("null frame size");
+			String[] size = frameSizeValue.split("x");
+			if (size.length != 2)
+				throw new IllegalArgumentException("Bad frame size: "
+						+ frameSizeValue);
 			frameWidth = Integer.valueOf(size[0]);
 			frameHeight = Integer.valueOf(size[1]);
-		} catch (NumberFormatException e) {
+		} catch (Exception e) {
 			frameWidth = 1920;
 			frameHeight = 1080;
 		}

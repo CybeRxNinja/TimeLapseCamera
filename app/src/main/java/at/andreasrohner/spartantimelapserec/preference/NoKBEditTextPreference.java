@@ -53,7 +53,8 @@ public class NoKBEditTextPreference extends EditTextPreference {
 
 		InputMethodManager imm = (InputMethodManager) getContext()
 				.getSystemService(Context.INPUT_METHOD_SERVICE);
-		imm.hideSoftInputFromWindow(mView.getWindowToken(),
-				InputMethodManager.HIDE_NOT_ALWAYS);
+		if (imm != null && mView != null)
+			imm.hideSoftInputFromWindow(mView.getWindowToken(),
+					InputMethodManager.HIDE_NOT_ALWAYS);
 	}
 }

@@ -50,6 +50,22 @@ public class ImageRecorder extends Recorder implements Runnable,
 	protected Camera.PictureCallback pictureCallback;
 	protected AutoFocusCallback autoFocusCallback;
 	protected boolean mWaitCamReady;
+	private volatile boolean mAutoFocusPending;
+	private final Runnable mAutoFocusTimeout = new Runnable() {
+		@Override
+		public void run() {
+			try {
+				// Some devices never invoke the AF callback; take the picture
+				// directly so recording does not stall silently.
+				if (mAutoFocusPending && mCamera != null) {
+					mAutoFocusPending = false;
+					onAutoFocus(true, mCamera);
+				}
+			} catch (Exception e) {
+				handleError(getClass().getSimpleName(), e.getMessage());
+			}
+		}
+	};
 
 	/**
 	 * Current / last recorded image
@@ -92,10 +108,13 @@ public class ImageRecorder extends Recorder implements Runnable,
 
 	@Override
 	public void stop() {
-		if (mHandler != null)
+		if (mHandler != null) {
 			mHandler.removeCallbacks(this);
+			mHandler.removeCallbacks(mAutoFocusTimeout);
+		}
+		mAutoFocusPending = false;
 
-		muteShutter();
+		unmuteShutter();
 
 		super.stop();
 	}
@@ -136,14 +155,30 @@ public class ImageRecorder extends Recorder implements Runnable,
 			FileOutputStream out = new FileOutputStream(file);
 			try {
 				if (stamped != null) {
-					stamped.compress(Bitmap.CompressFormat.JPEG,
-							mSettings.getJpegQuality(), out);
+					boolean compressed = false;
+					try {
+						compressed = stamped.compress(Bitmap.CompressFormat.JPEG,
+								mSettings.getJpegQuality(), out);
+					} catch (Exception e) {
+						compressed = false;
+					}
+					if (!compressed) {
+						// Never write a 0-byte/corrupt file silently; fall back
+						// to the raw capture bytes.
+						try {
+							out.close();
+						} catch (Exception ignored) {
+						}
+						out = new FileOutputStream(file, false);
+						out.write(data);
+					}
 				} else {
 					out.write(data);
 				}
 			} finally {
 				out.close();
 			}
+			scanSavedFile(file, "image/jpeg");
 			if (stamped != null && stamped != decoded)
 				decoded.recycle();
 			mWaitCamReady = false;
@@ -157,6 +192,9 @@ public class ImageRecorder extends Recorder implements Runnable,
 	@Override
 	public void onAutoFocus(boolean success, Camera camera) {
 		try {
+			mAutoFocusPending = false;
+			if (mHandler != null)
+				mHandler.removeCallbacks(mAutoFocusTimeout);
 			muteShutter();
 			new Handler(Looper.getMainLooper()).postDelayed(() -> {
 				if (mCamera!=null) {
@@ -189,7 +227,12 @@ public class ImageRecorder extends Recorder implements Runnable,
 				if (mCamera!=null) {
 					mCamera.startPreview();
 					if (mUseAutoFocus) {
+						mAutoFocusPending = true;
 						mCamera.autoFocus(autoFocusCallback);
+						if (mHandler != null) {
+							mHandler.removeCallbacks(mAutoFocusTimeout);
+							mHandler.postDelayed(mAutoFocusTimeout, 3000);
+						}
 					}
 					else {
 						onAutoFocus(true, mCamera);
@@ -248,14 +291,59 @@ public class ImageRecorder extends Recorder implements Runnable,
 
 		params.setPictureFormat(ImageFormat.JPEG);
 
-		params.setPictureSize(mSettings.getFrameWidth(),
-				mSettings.getFrameHeight());
+		// Never request an unsupported size: setPictureSize throws on mismatch.
+		List<Camera.Size> suppSizes = params.getSupportedPictureSizes();
+		if (suppSizes != null && !suppSizes.isEmpty()) {
+			int picWidth = mSettings.getFrameWidth();
+			int picHeight = mSettings.getFrameHeight();
+			boolean picSizeOk = false;
+			for (Camera.Size s : suppSizes) {
+				if (s != null && s.width == picWidth && s.height == picHeight) {
+					picSizeOk = true;
+					break;
+				}
+			}
+			if (!picSizeOk) {
+				picWidth = suppSizes.get(0).width;
+				picHeight = suppSizes.get(0).height;
+			}
+			params.setPictureSize(picWidth, picHeight);
+		}
 
 		params.setJpegQuality(mSettings.getJpegQuality());
 		params.setRotation(getCameraRotation(mSettings.getCameraId()));
-		params.setExposureCompensation(mSettings.getExposureCompensation());
-		params.setZoom(mSettings.getZoom());
-		params.setFlashMode(mSettings.getCameraFlash() ? Camera.Parameters.FLASH_MODE_ON : Camera.Parameters.FLASH_MODE_OFF);
+		int exposure = mSettings.getExposureCompensation();
+		try {
+			int minExposure = params.getMinExposureCompensation();
+			int maxExposure = params.getMaxExposureCompensation();
+			if (exposure < minExposure)
+				exposure = minExposure;
+			else if (exposure > maxExposure)
+				exposure = maxExposure;
+			params.setExposureCompensation(exposure);
+		} catch (Exception e) {
+			try {
+				params.setExposureCompensation(0);
+			} catch (Exception ignored) {
+			}
+		}
+		if (params.isZoomSupported()) {
+			try {
+				int zoom = mSettings.getZoom();
+				int maxZoom = params.getMaxZoom();
+				if (zoom < 0)
+					zoom = 0;
+				else if (zoom > maxZoom)
+					zoom = maxZoom;
+				params.setZoom(zoom);
+			} catch (Exception ignored) {
+			}
+		}
+		List<String> suppFlashModes = params.getSupportedFlashModes();
+		String wantFlash = mSettings.getCameraFlash() ? Camera.Parameters.FLASH_MODE_ON
+				: Camera.Parameters.FLASH_MODE_OFF;
+		if (suppFlashModes != null && suppFlashModes.contains(wantFlash))
+			params.setFlashMode(wantFlash);
 		mCamera.setParameters(params);
 
 		mCamera.setErrorCallback(this);

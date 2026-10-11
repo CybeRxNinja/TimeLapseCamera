@@ -31,31 +31,57 @@ public class IntervalPickerPreference extends DialogPreference {
 		super.onBindDialogView(v);
 
 		mValue = getPersistedInt(DEFAULT_VALUE);
+		if (mValue < 0)
+			mValue = DEFAULT_VALUE;
 
 		mMilliPicker = (NumberPicker) v.findViewById(R.id.dialog_seekbar_preference_milli);
-		String[] nums = new String[100];
-		for(int i=0; i<nums.length; i++)
-			nums[i] = Integer.toString(i*10);
-		mMilliPicker.setMinValue(0);
-		mMilliPicker.setMaxValue(99);
-		mMilliPicker.setDisplayedValues(nums);
-		mMilliPicker.setValue((mValue%1000)/10);
+		if (mMilliPicker != null) {
+			String[] nums = new String[100];
+			for(int i=0; i<nums.length; i++)
+				nums[i] = Integer.toString(i*10);
+			mMilliPicker.setMinValue(0);
+			mMilliPicker.setMaxValue(99);
+			mMilliPicker.setDisplayedValues(nums);
+			mMilliPicker.setValue(clamp((mValue%1000)/10, 0, 99));
+		}
 
 		mSecondsPicker = (NumberPicker) v.findViewById(R.id.dialog_seekbar_preference_seconds);
-		mSecondsPicker.setMinValue(0);
-		mSecondsPicker.setMaxValue(59);
-		mSecondsPicker.setValue((mValue-mValue%1000)/1000%60);
+		if (mSecondsPicker != null) {
+			mSecondsPicker.setMinValue(0);
+			mSecondsPicker.setMaxValue(59);
+			mSecondsPicker.setValue(clamp((mValue-mValue%1000)/1000%60, 0, 59));
+		}
 
 		mMinutesPicker = (NumberPicker) v.findViewById(R.id.dialog_seekbar_preference_minutes);
-		mMinutesPicker.setMinValue(0);
-		mMinutesPicker.setMaxValue(10);
-		mMinutesPicker.setValue((mValue-mSecondsPicker.getValue()*1000-mMilliPicker.getValue()*10)/60000);
+		if (mMinutesPicker != null) {
+			mMinutesPicker.setMinValue(0);
+			mMinutesPicker.setMaxValue(10);
+			int minutes = 0;
+			try {
+				minutes = (mValue
+						- (mSecondsPicker != null ? mSecondsPicker.getValue() : 0) * 1000
+						- (mMilliPicker != null ? mMilliPicker.getValue() : 0) * 10) / 60000;
+			} catch (Exception ignored) {
+			}
+			mMinutesPicker.setValue(clamp(minutes, 0, 10));
+		}
 
+	}
+
+	private static int clamp(int value, int min, int max) {
+		if (value < min)
+			return min;
+		if (value > max)
+			return max;
+		return value;
 	}
 
 	@Override
 	protected void onDialogClosed(boolean positiveResult) {
 		if (positiveResult) {
+			if (mMinutesPicker == null || mSecondsPicker == null
+					|| mMilliPicker == null)
+				return;
 			mValue=mMinutesPicker.getValue()*60000+mSecondsPicker.getValue()*1000+mMilliPicker.getValue()*10;
 			persistInt(mValue);
 		}

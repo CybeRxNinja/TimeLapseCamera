@@ -289,12 +289,12 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 	}
 
 	private void setOverlaySummaries(SharedPreferences prefs) {
-		prefOverlayPosition.setSummary(prefOverlayPosition.getEntry());
-		prefOverlaySize.setSummary(prefOverlaySize.getEntry());
-		prefOverlayContent.setSummary(prefOverlayContent.getEntry());
-		prefOverlayFormat.setSummary(prefOverlayFormat.getEntry());
-		prefOverlayTextColor.setSummary(prefOverlayTextColor.getEntry());
-		prefOverlayBackground.setSummary(prefOverlayBackground.getEntry());
+		setListSummary(prefOverlayPosition);
+		setListSummary(prefOverlaySize);
+		setListSummary(prefOverlayContent);
+		setListSummary(prefOverlayFormat);
+		setListSummary(prefOverlayTextColor);
+		setListSummary(prefOverlayBackground);
 		String custom = prefs.getString("pref_overlay_custom_format", "");
 		if (custom == null || custom.isEmpty())
 			prefOverlayCustomFormat.setSummary(context.getString(R.string.pref_overlay_custom_format_hint));
@@ -313,11 +313,23 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 		prefOverlayBackground.setEnabled(enabled);
 	}
 
+	private void setListSummary(ListPreference pref) {
+		if (pref == null)
+			return;
+		// getEntry() returns null when the persisted value no longer matches
+		// any entry (e.g. after upgrade installs); fall back to the raw value
+		// instead of crashing or showing a stale summary.
+		CharSequence entry = pref.getEntry();
+		pref.setSummary(entry != null ? entry : pref.getValue());
+	}
+
 	private void setRecMode(SharedPreferences prefs) {
 
 		CharSequence entry = prefRecMode.getEntry();
 		if (entry != null) {
 			prefRecMode.setSummary(entry);
+		} else {
+			prefRecMode.setSummary(prefRecMode.getValue());
 		}
 	}
 
@@ -378,6 +390,8 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 			CharSequence entry = prefCamera.getEntry();
 			if (entry != null) {
 				prefCamera.setSummary(entry);
+			} else {
+				prefCamera.setSummary(prefCamera.getValue());
 			}
 			setFrameRates(prefs);
 			setFrameSizes(prefs);
@@ -403,9 +417,9 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 		} else if (key.equals("pref_jpeg_quality")) {
 			prefJpegQuality.setSummary(prefJpegQuality.getmValue() + " %");
 		} else if (key.equals("pref_frame_size")) {
-			prefFrameSize.setSummary(prefFrameSize.getEntry());
+			setListSummary(prefFrameSize);
 		} else if (key.equals("pref_frame_rate")) {
-			prefFrameRate.setSummary(prefFrameRate.getEntry());
+			setListSummary(prefFrameRate);
 		} else if (key.equals("pref_schedule_recording")) {
 			prefScheduleRec.setSummary(prefScheduleRec.formatDateTime());
 			RecSettings settings = new RecSettings();
@@ -441,13 +455,13 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 			}
 			prefVideoEncodingBitRate.setSummary(RecSettings.getInteger(prefs, "pref_video_encoding_br", 0) == 0 ? context.getString(R.string.encode_best) : context.getString(R.string.format_bps, prefs.getString("pref_video_encoding_br", "0")));
 		} else if (key.equals("pref_overlay_position")) {
-			prefOverlayPosition.setSummary(prefOverlayPosition.getEntry());
+			setListSummary(prefOverlayPosition);
 		} else if (key.equals("pref_overlay_size")) {
-			prefOverlaySize.setSummary(prefOverlaySize.getEntry());
+			setListSummary(prefOverlaySize);
 		} else if (key.equals("pref_overlay_content")) {
-			prefOverlayContent.setSummary(prefOverlayContent.getEntry());
+			setListSummary(prefOverlayContent);
 		} else if (key.equals("pref_overlay_format")) {
-			prefOverlayFormat.setSummary(prefOverlayFormat.getEntry());
+			setListSummary(prefOverlayFormat);
 		} else if (key.equals("pref_overlay_custom_format")) {
 			String custom = prefs.getString("pref_overlay_custom_format", "");
 			if (custom == null || custom.isEmpty())
@@ -455,9 +469,9 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 			else
 				prefOverlayCustomFormat.setSummary(custom);
 		} else if (key.equals("pref_overlay_text_color")) {
-			prefOverlayTextColor.setSummary(prefOverlayTextColor.getEntry());
+			setListSummary(prefOverlayTextColor);
 		} else if (key.equals("pref_overlay_background")) {
-			prefOverlayBackground.setSummary(prefOverlayBackground.getEntry());
+			setListSummary(prefOverlayBackground);
 		} else if (key.equals("pref_overlay_enabled")) {
 			updateOverlayPrefStatus(prefs);
 		} else if (key.equals("pref_restapi_enabled")) {

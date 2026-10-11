@@ -56,32 +56,32 @@ public class MainActivity extends AppCompatActivity implements ForegroundService
 		ThemeUtils.setStatusBarAppearance(this);
 		if (broadcastReceiver==null) broadcastReceiver = new DeviceStatusReceiver();
 		IntentFilter filter = new IntentFilter();
-		filter.addAction("android.intent.action.ACTION_BATTERY_LOW");
-		filter.addAction("android.intent.action.ACTION_DEVICE_STORAGE_LOW");
-		filter.addAction("android.intent.action.ACTION_SHUTDOWN");
+		filter.addAction(Intent.ACTION_BATTERY_LOW);
+		filter.addAction(Intent.ACTION_DEVICE_STORAGE_LOW);
+		filter.addAction(Intent.ACTION_SHUTDOWN);
 		//filter.addAction("android.intent.action.AIRPLANE_MODE"); //for testing
 		ContextCompat.registerReceiver(getApplicationContext(),broadcastReceiver, filter, ContextCompat.RECEIVER_EXPORTED);
 
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
 			// API < 30: WRITE_EXTERNAL_STORAGE is required and grantable
-			if ((ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED && !shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) ||
-					(ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED && !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) ||
-					(ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED && !shouldShowRequestPermissionRationale(Manifest.permission.WRITE_EXTERNAL_STORAGE))) {
+			if ((ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) ||
+					(ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) ||
+					(ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)) {
 				ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.WRITE_EXTERNAL_STORAGE}, 123);
 			}
 		} else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
 			// API 30-32: scoped storage, no storage permission needed
-			if ((ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED && !shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) ||
-					(ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED && !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO))) {
+			if ((ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) ||
+					(ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)) {
 				ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO}, 123);
 			}
 		} else {
 			// API 33+: granular media perms + POST_NOTIFICATIONS
-			if ((ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED && !shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) ||
-					(ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED && !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) ||
-					(ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) ||
-					(ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED && !shouldShowRequestPermissionRationale(Manifest.permission.READ_MEDIA_IMAGES)) ||
-					(ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED && !shouldShowRequestPermissionRationale(Manifest.permission.READ_MEDIA_VIDEO))) {
+			if ((ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) ||
+					(ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) ||
+					(ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) ||
+					(ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) ||
+					(ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED)) {
 				ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO}, 123);
 			}
 		}
@@ -99,7 +99,18 @@ public class MainActivity extends AppCompatActivity implements ForegroundService
 		Context context = getApplicationContext();
 		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
 		SettingsCommon.setDefaultValues(context, prefs);
-		startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:"+getPackageName())));
+		// Only ask to ignore battery optimizations when not already ignored
+		// and when the system can handle the intent.
+		try {
+			android.os.PowerManager powerManager = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+			if (powerManager == null || !powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+				Intent batteryIntent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName()));
+				if (batteryIntent.resolveActivity(getPackageManager()) != null)
+					startActivity(batteryIntent);
+			}
+		} catch (Exception e) {
+			android.util.Log.w("TimeLapseCamera", "Battery optimization request failed", e);
+		}
 		FreeDroidWarn.showWarningOnUpgrade(this, BuildConfig.VERSION_CODE);
 		if (GithubStar.shouldShowStarDialog(this)) GithubStar.starDialog(this,"https://github.com/woheller69/timelapsecamera");
 	}
@@ -144,8 +155,27 @@ public class MainActivity extends AppCompatActivity implements ForegroundService
 
 	@Override
 	protected void onDestroy() {
-		broadcastReceiver = null;
+		if (broadcastReceiver != null) {
+			try {
+				getApplicationContext().unregisterReceiver(broadcastReceiver);
+			} catch (Exception ignored) {
+			}
+			broadcastReceiver = null;
+		}
 		super.onDestroy();
+	}
+
+	@Override
+	public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+		super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+		if (requestCode == 123) {
+			for (int result : grantResults) {
+				if (result != PackageManager.PERMISSION_GRANTED) {
+					Toast.makeText(this, getString(R.string.error_missing_permission), Toast.LENGTH_SHORT).show();
+					return;
+				}
+			}
+		}
 	}
 
 	public void actionStop(MenuItem item) {
@@ -156,11 +186,20 @@ public class MainActivity extends AppCompatActivity implements ForegroundService
 	}
 
 	public void actionGallery(MenuItem item) {
-		Intent intent = new Intent();
-		intent.setAction(android.content.Intent.ACTION_VIEW);
-		intent.setType("image/*");
+		// Point at the real output: the MediaStore collection holding the
+		// published captures; fall back to a generic image viewer.
+		Intent intent = new Intent(Intent.ACTION_VIEW);
+		intent.setDataAndType(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image/*");
 		intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-		startActivity(intent);
+		if (intent.resolveActivity(getPackageManager()) != null) {
+			startActivity(intent);
+			return;
+		}
+		Intent fallback = new Intent(Intent.ACTION_VIEW);
+		fallback.setType("image/*");
+		fallback.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+		if (fallback.resolveActivity(getPackageManager()) != null)
+			startActivity(fallback);
 	}
 
 	public void actionPreview(MenuItem item) {

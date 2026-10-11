@@ -18,6 +18,7 @@
 
 package at.andreasrohner.spartantimelapserec.recorder;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
@@ -38,6 +39,27 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 		OnErrorListener {
 	protected MediaRecorder mMediaRecorder;
 	protected int mRate;
+	protected File mLastOutputFile;
+
+	/**
+	 * Resolve a usable CamcorderProfile: never let CamcorderProfile.get throw
+	 * for a missing profile, fall back to a guaranteed quality instead.
+	 */
+	protected CamcorderProfile resolveProfile() {
+		int cameraId = mSettings.getCameraId();
+		int quality = mSettings.getRecProfile();
+		int[] candidates = new int[] { quality,
+				CamcorderProfile.QUALITY_HIGH, CamcorderProfile.QUALITY_720P,
+				CamcorderProfile.QUALITY_480P, CamcorderProfile.QUALITY_LOW };
+		for (int q : candidates) {
+			try {
+				if (CamcorderProfile.hasProfile(cameraId, q))
+					return CamcorderProfile.get(cameraId, q);
+			} catch (Exception ignored) {
+			}
+		}
+		return CamcorderProfile.get(cameraId, CamcorderProfile.QUALITY_LOW);
+	}
 
 	public VideoRecorder(RecSettings settings,
 			Context context, Handler handler) {
@@ -85,6 +107,10 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 		muteShutter();
 		releaseMediaRecorder();
 
+		if (mLastOutputFile != null && mLastOutputFile.isFile()
+				&& mLastOutputFile.length() > 0)
+			scanSavedFile(mLastOutputFile, "video/mp4");
+
 		super.stop();
 	}
 
@@ -118,9 +144,38 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 				params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
 			}
 		}
-		params.setExposureCompensation(mSettings.getExposureCompensation());
-		params.setZoom(mSettings.getZoom());
+		params.setExposureCompensation(clampExposure(params,
+				mSettings.getExposureCompensation()));
+		setClampedZoom(params, mSettings.getZoom());
 		mCamera.setParameters(params);
+	}
+
+	private static int clampExposure(Camera.Parameters params, int exposure) {
+		try {
+			int minExposure = params.getMinExposureCompensation();
+			int maxExposure = params.getMaxExposureCompensation();
+			if (exposure < minExposure)
+				return minExposure;
+			if (exposure > maxExposure)
+				return maxExposure;
+			return exposure;
+		} catch (Exception e) {
+			return 0;
+		}
+	}
+
+	private static void setClampedZoom(Camera.Parameters params, int zoom) {
+		try {
+			if (!params.isZoomSupported())
+				return;
+			int maxZoom = params.getMaxZoom();
+			if (zoom < 0)
+				zoom = 0;
+			else if (zoom > maxZoom)
+				zoom = maxZoom;
+			params.setZoom(zoom);
+		} catch (Exception ignored) {
+		}
 	}
 
 	@Override
@@ -156,16 +211,15 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 		mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
 		mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.CAMERA);
 
-		CamcorderProfile p = CamcorderProfile.get(mSettings.getCameraId(),
-				mSettings.getRecProfile());
+		CamcorderProfile p = resolveProfile();
 		p.videoFrameWidth = mSettings.getFrameWidth();
 		p.videoFrameHeight = mSettings.getFrameHeight();
 		mMediaRecorder.setProfile(p);
 
 		if (mRate != -1)
 			mMediaRecorder.setVideoFrameRate(mRate);
-		mMediaRecorder.setOutputFile(getOutputFile("mp4").getAbsolutePath());
-		mMediaRecorder.setVideoSize(mSettings.getFrameWidth(), mSettings.getFrameHeight());
+		mLastOutputFile = getOutputFile("mp4");
+		mMediaRecorder.setOutputFile(mLastOutputFile.getAbsolutePath());
 
 		if (mSettings.getStopRecAfter() > 0) {
 			mMediaRecorder.setMaxDuration(mSettings.getStopRecAfter());

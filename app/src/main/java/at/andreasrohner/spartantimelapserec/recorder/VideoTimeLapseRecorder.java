@@ -44,27 +44,34 @@ public class VideoTimeLapseRecorder extends VideoRecorder {
 
 		mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.CAMERA);
 
-		CamcorderProfile p = CamcorderProfile.get(mSettings.getCameraId(),
-				mSettings.getRecProfile());
+		CamcorderProfile p = resolveProfile();
 		p.videoFrameWidth = mSettings.getFrameWidth();
 		p.videoFrameHeight = mSettings.getFrameHeight();
 		mMediaRecorder.setProfile(p);
 
-		mMediaRecorder.setCaptureRate(1000 / ((double) mSettings.getCaptureRate()));
+		int captureRate = mSettings.getCaptureRate();
+		if (captureRate <= 0)
+			captureRate = 1000;
+		mMediaRecorder.setCaptureRate(1000 / ((double) captureRate));
 
 		if (mRate != -1)
 			mMediaRecorder.setVideoFrameRate(mRate);
-		mMediaRecorder.setOutputFile(getOutputFile("mp4").getAbsolutePath());
-		mMediaRecorder.setVideoSize(mSettings.getFrameWidth(),
-				mSettings.getFrameHeight());
+		mLastOutputFile = getOutputFile("mp4");
+		mMediaRecorder.setOutputFile(mLastOutputFile.getAbsolutePath());
 
 		if (mSettings.getStopRecAfter() > 0) {
 			if (mRate != -1) {
-				mRate = CamcorderProfile.get(mSettings.getCameraId(),
-						mSettings.getRecProfile()).videoFrameRate;
+				try {
+					if (CamcorderProfile.hasProfile(mSettings.getCameraId(),
+							mSettings.getRecProfile()))
+						mRate = CamcorderProfile.get(mSettings.getCameraId(),
+								mSettings.getRecProfile()).videoFrameRate;
+				} catch (Exception ignored) {
+				}
 			}
+			int rate = mRate > 0 ? mRate : 30;
 
-			int duration = (int) (((double) (mSettings.getStopRecAfter() / mSettings.getCaptureRate())) / mRate * 1000); //Duration of the video
+			int duration = (int) (((double) (mSettings.getStopRecAfter() / captureRate)) / rate * 1000); //Duration of the video
 			if (duration < 500) {
 				handleError(getClass().getSimpleName(),
 						mContext.getString(R.string.pref_stop_recording_after)

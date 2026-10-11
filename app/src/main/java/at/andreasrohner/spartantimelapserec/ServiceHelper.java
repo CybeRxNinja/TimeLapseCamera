@@ -50,6 +50,10 @@ public class ServiceHelper {
 	public void stop() {
 		Intent intent = new Intent(context, ForegroundService.class);
 		intent.setAction(ForegroundService.ACTION_STOP_SERVICE);
-		context.startService(intent);
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+			context.startForegroundService(intent);
+		} else {
+			context.startService(intent);
+		}
 	}
 }

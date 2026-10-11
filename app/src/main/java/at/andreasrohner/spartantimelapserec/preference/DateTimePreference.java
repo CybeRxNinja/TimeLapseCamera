@@ -121,8 +121,10 @@ public class DateTimePreference extends DialogPreference implements
 		if (mEnabled) {
 			if (!(mCal.getTimeInMillis() >= System.currentTimeMillis() + 10000)) mEnabled = false;
 		}
-		checkBox.setChecked(mEnabled);
-		checkBox.setOnCheckedChangeListener(this);
+		if (checkBox != null) {
+			checkBox.setChecked(mEnabled);
+			checkBox.setOnCheckedChangeListener(this);
+		}
 	}
 
 	@Override
@@ -134,15 +136,19 @@ public class DateTimePreference extends DialogPreference implements
 		mDatePicker = (DatePicker) v.findViewById(R.id.dialog_date_preference_date);
 		mTimePicker = (TimePicker) v.findViewById(R.id.dialog_date_preference_time);
 
-		mDatePicker.setCalendarViewShown(false);
-		mDatePicker.setMinDate(System.currentTimeMillis() - 1000);
+		if (mDatePicker != null) {
+			mDatePicker.setCalendarViewShown(false);
+			mDatePicker.setMinDate(System.currentTimeMillis() - 1000);
 
-		mDatePicker.updateDate(mCal.get(Calendar.YEAR),
-				mCal.get(Calendar.MONTH), mCal.get(Calendar.DAY_OF_MONTH));
+			mDatePicker.updateDate(mCal.get(Calendar.YEAR),
+					mCal.get(Calendar.MONTH), mCal.get(Calendar.DAY_OF_MONTH));
+		}
 
-		mTimePicker.setIs24HourView(true);
-		mTimePicker.setCurrentHour(mCal.get(Calendar.HOUR_OF_DAY));
-		mTimePicker.setCurrentMinute(mCal.get(Calendar.MINUTE));
+		if (mTimePicker != null) {
+			mTimePicker.setIs24HourView(true);
+			mTimePicker.setCurrentHour(mCal.get(Calendar.HOUR_OF_DAY));
+			mTimePicker.setCurrentMinute(mCal.get(Calendar.MINUTE));
+		}
 	}
 
 	@Override

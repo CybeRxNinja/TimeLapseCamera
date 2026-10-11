@@ -221,6 +221,64 @@ public abstract class Recorder {
 		return outFile;
 	}
 
+	/**
+	 * Make a saved image/video visible to gallery apps. API 29+ does not index
+	 * app-specific directories by file-path scanning alone, so publish a
+	 * visible copy through MediaStore there; scan the file directly below that.
+	 */
+	protected void scanSavedFile(File file, String mimeType) {
+		if (file == null || mContext == null)
+			return;
+		try {
+			Context ctx = mContext.getApplicationContext() != null ? mContext
+					.getApplicationContext() : mContext;
+			if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+				android.content.ContentValues values = new android.content.ContentValues();
+				values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+						file.getName());
+				values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE,
+						mimeType);
+				values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+						android.os.Environment.DIRECTORY_PICTURES
+								+ "/TimeLapseCamera");
+				android.net.Uri collection = mimeType != null
+						&& mimeType.startsWith("video") ? android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+						: android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+				android.net.Uri uri = ctx.getContentResolver().insert(
+						collection, values);
+				if (uri != null) {
+					java.io.InputStream in = null;
+					java.io.OutputStream out = null;
+					try {
+						in = new java.io.FileInputStream(file);
+						out = ctx.getContentResolver().openOutputStream(uri);
+						byte[] buf = new byte[8192];
+						int n;
+						while ((n = in.read(buf)) != -1)
+							out.write(buf, 0, n);
+					} finally {
+						if (in != null)
+							try {
+								in.close();
+							} catch (IOException ignored) {
+							}
+						if (out != null)
+							try {
+								out.close();
+							} catch (IOException ignored) {
+							}
+					}
+					return;
+				}
+			}
+			android.media.MediaScannerConnection.scanFile(ctx,
+					new String[] { file.getAbsolutePath() },
+					new String[] { mimeType }, null);
+		} catch (Exception e) {
+			Log.w("TimeLapseCamera", "scanSavedFile failed for " + file, e);
+		}
+	}
+
 	protected int getCameraRotation(int cameraId) {
 		if (mOrientation != null)
 			return mOrientation.getCameraRotation(cameraId);

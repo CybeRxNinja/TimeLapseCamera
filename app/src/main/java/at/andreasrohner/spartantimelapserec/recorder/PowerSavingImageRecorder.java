@@ -79,6 +79,11 @@ public class PowerSavingImageRecorder extends ImageRecorder {
 		releaseCamera();
 		unmuteShutter();
 
-		mWakeLock.release();
+		try {
+			if (mWakeLock != null && mWakeLock.isHeld())
+				mWakeLock.release();
+		} catch (RuntimeException e) {
+			android.util.Log.w("TimeLapseCamera", "WakeLock release failed", e);
+		}
 	}
 }

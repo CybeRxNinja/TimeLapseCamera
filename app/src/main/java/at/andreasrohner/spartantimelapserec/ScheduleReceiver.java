@@ -27,6 +27,9 @@ public class ScheduleReceiver extends BroadcastReceiver {
 	@Override
 	public void onReceive(Context context, Intent intent) {
 		Intent serviceIntent = new Intent(context, ForegroundService.class);
-		context.startService(serviceIntent);
+		if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O)
+			context.startForegroundService(serviceIntent);
+		else
+			context.startService(serviceIntent);
 	}
 }

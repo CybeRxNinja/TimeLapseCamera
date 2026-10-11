@@ -71,7 +71,18 @@ public class ForegroundService extends Service implements Handler.Callback {
                 AlarmManager alarmMgr = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
                 Intent newintent = new Intent(getApplicationContext(), ScheduleReceiver.class);
                 PendingIntent alarmIntent = PendingIntent.getBroadcast(getApplicationContext(), 0, newintent, PendingIntent.FLAG_IMMUTABLE);
-                alarmMgr.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, settings.getSchedRecTime(), alarmIntent);
+                // On Android 12+ exact alarms need SCHEDULE_EXACT_ALARM; fall
+                // back to an inexact alarm when it cannot be scheduled.
+                if (VERSION.SDK_INT >= VERSION_CODES.S && !alarmMgr.canScheduleExactAlarms()) {
+                    alarmMgr.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, settings.getSchedRecTime(), alarmIntent);
+                } else {
+                    try {
+                        alarmMgr.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, settings.getSchedRecTime(), alarmIntent);
+                    } catch (SecurityException e) {
+                        Log.w("TimeLapseCamera", "Exact alarm denied, using inexact", e);
+                        alarmMgr.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, settings.getSchedRecTime(), alarmIntent);
+                    }
+                }
 
             } else {
 
