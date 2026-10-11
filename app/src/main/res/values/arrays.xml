@@ -80,9 +80,9 @@
 
     <string-array name="pref_overlay_background_entries">
         <item>Transparent</item>
-        <item>Light (40%)</item>
-        <item>Medium (60%)</item>
-        <item>Dark (80%)</item>
+        <item>Light</item>
+        <item>Medium</item>
+        <item>Dark</item>
     </string-array>
     <string-array name="pref_overlay_background_values">
         <item>0</item>

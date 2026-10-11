@@ -104,4 +104,5 @@
     <string name="pref_overlay_custom_format_hint">yyyy-MM-dd HH:mm:ss</string>
     <string name="pref_overlay_text_color">Text color</string>
     <string name="pref_overlay_background">Background shading</string>
+    <string name="pref_overlay_background_summ">Background opacity: Transparent is none, Light is low, Medium is medium, Dark is high</string>
 </resources>

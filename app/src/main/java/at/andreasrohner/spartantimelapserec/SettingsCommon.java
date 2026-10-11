@@ -147,7 +147,7 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 
 				if (index >= 0 && sizesList.size() > 0) {
 					prefFrameSize.setValueIndex(index);
-					prefFrameSize.setSummary(sizesList.get(index));
+					prefFrameSize.setSummary(escapeSummary(sizesList.get(index)));
 				}
 
 				updatePrefStatus(prefs);
@@ -183,7 +183,7 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 
 				if (index >= 0 && fpsList.size() > 0) {
 					prefFrameRate.setValueIndex(index);
-					prefFrameRate.setSummary(fpsList.get(index));
+					prefFrameRate.setSummary(escapeSummary(fpsList.get(index)));
 				}
 				updatePrefStatus(prefs);
 			}
@@ -238,7 +238,7 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 			prefCamera.setSummary(null);
 			prefCamera.setEnabled(false);
 		} else {
-			prefCamera.setSummary(camList[camId]);
+			prefCamera.setSummary(escapeSummary(camList[camId]));
 		}
 	}
 
@@ -320,16 +320,27 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 		// any entry (e.g. after upgrade installs); fall back to the raw value
 		// instead of crashing or showing a stale summary.
 		CharSequence entry = pref.getEntry();
-		pref.setSummary(entry != null ? entry : pref.getValue());
+		pref.setSummary(entry != null ? escapeSummary(entry) : escapeSummary(pref.getValue()));
+	}
+
+	// ListPreference.getSummary() runs the stored summary through
+	// String.format(summary, entry), so any bare '%' in the summary (e.g. an
+	// entry like "Light (40%)") throws UnknownFormatConversionException at
+	// bind time and crashes settings scrolling. Escape '%' as '%%' before
+	// storing: String.format renders "%%" back as a literal "%", so
+	// happy-path text is unchanged while no future '%' in any entry can
+	// ever crash binding again.
+	private static String escapeSummary(CharSequence s) {
+		return s == null ? null : s.toString().replace("%", "%%");
 	}
 
 	private void setRecMode(SharedPreferences prefs) {
 
 		CharSequence entry = prefRecMode.getEntry();
 		if (entry != null) {
-			prefRecMode.setSummary(entry);
+			prefRecMode.setSummary(escapeSummary(entry));
 		} else {
-			prefRecMode.setSummary(prefRecMode.getValue());
+			prefRecMode.setSummary(escapeSummary(prefRecMode.getValue()));
 		}
 	}
 
@@ -389,9 +400,9 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 		if (key.equals("pref_camera")) {
 			CharSequence entry = prefCamera.getEntry();
 			if (entry != null) {
-				prefCamera.setSummary(entry);
+				prefCamera.setSummary(escapeSummary(entry));
 			} else {
-				prefCamera.setSummary(prefCamera.getValue());
+				prefCamera.setSummary(escapeSummary(prefCamera.getValue()));
 			}
 			setFrameRates(prefs);
 			setFrameSizes(prefs);

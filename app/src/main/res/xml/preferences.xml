@@ -134,6 +134,7 @@
             android:entries="@array/pref_overlay_background_entries"
             android:entryValues="@array/pref_overlay_background_values"
             android:key="pref_overlay_background"
+            android:summary="@string/pref_overlay_background_summ"
             android:title="@string/pref_overlay_background" />
     </PreferenceCategory>
 
