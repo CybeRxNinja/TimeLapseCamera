@@ -89,6 +89,9 @@
     <string name="info_restapi_stopped">REST API stopped...</string>
     <string name="error_port_invalid">Port invalid, use 8085</string>
     <string name="pref_restapi_connectioninfo_title">Connection Info</string>
+    <string name="pref_preview_enabled">Show camera preview</string>
+    <string name="pref_preview_enabled_summ">Show a live camera preview in the connection info dialog</string>
+    <string name="pref_preview_unavailable">Camera unavailable, preview off</string>
     <string name="error_no_ip_refresh">No IP! Tap to refresh.</string>
     <string name="notification_restapi">REST API Running</string>
     <string name="pref_overlay_category">Timestamp overlay (CCTV style)</string>

@@ -60,6 +60,7 @@ public class RecSettings {
 	private String overlayCustomFormat;
 	private String overlayTextColor;
 	private String overlayBackground;
+	private boolean previewEnabled;
 
 	public static int getInteger(SharedPreferences prefs, String key, int def) {
 		try {
@@ -196,6 +197,7 @@ public class RecSettings {
 		overlayCustomFormat = prefs.getString("pref_overlay_custom_format", "");
 		overlayTextColor = prefs.getString("pref_overlay_text_color", "#FFFFFF");
 		overlayBackground = prefs.getString("pref_overlay_background", "60");
+		previewEnabled = prefs.getBoolean("pref_preview_enabled", true);
 		// negative value disables the limit
 		if (stopRecAfter >= 47 * 60)
 			stopRecAfter = -1;
@@ -411,4 +413,6 @@ public class RecSettings {
 	public String getOverlayTextColor() { return overlayTextColor; }
 
 	public String getOverlayBackground() { return overlayBackground; }
+
+	public boolean isPreviewEnabled() { return previewEnabled; }
 }

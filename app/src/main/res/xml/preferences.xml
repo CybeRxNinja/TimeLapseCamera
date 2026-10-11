@@ -206,6 +206,12 @@
             android:title="@string/pref_restapi_connectioninfo_title" />
 
         <CheckBoxPreference
+            android:defaultValue="true"
+            android:key="pref_preview_enabled"
+            android:summary="@string/pref_preview_enabled_summ"
+            android:title="@string/pref_preview_enabled" />
+
+        <CheckBoxPreference
             android:defaultValue="false"
             android:key="pref_restapi_enabled"
             android:summary="@string/pref_restapi_enabled_summ"
