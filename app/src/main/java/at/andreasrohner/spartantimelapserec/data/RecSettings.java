@@ -52,6 +52,7 @@ public class RecSettings {
 	private boolean cameraFlash;
 	private int videoEncodingBitRate;
 	private boolean overlayEnabled;
+	private boolean overlayVideo;
 	private String overlayPosition;
 	private String overlaySize;
 	private String overlayContent;
@@ -187,6 +188,7 @@ public class RecSettings {
 		cameraTriggerDelay = prefs.getInt("pref_camera_trigger_delay", 1000);
 		cameraFlash = prefs.getBoolean("pref_flash",false);
 		overlayEnabled = prefs.getBoolean("pref_overlay_enabled", true);
+		overlayVideo = prefs.getBoolean("pref_overlay_video", true);
 		overlayPosition = prefs.getString("pref_overlay_position", "bottom_right");
 		overlaySize = prefs.getString("pref_overlay_size", "medium");
 		overlayContent = prefs.getString("pref_overlay_content", "datetime");
@@ -393,6 +395,8 @@ public class RecSettings {
 	public int getVideoEncodingBitRate() {return  videoEncodingBitRate;}
 
 	public boolean isOverlayEnabled() { return overlayEnabled; }
+
+	public boolean isOverlayVideo() { return overlayVideo; }
 
 	public String getOverlayPosition() { return overlayPosition; }
 

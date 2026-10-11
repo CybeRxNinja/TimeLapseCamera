@@ -31,6 +31,7 @@ import android.hardware.Camera;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.preference.CheckBoxPreference;
 import android.preference.EditTextPreference;
 import android.preference.ListPreference;
 import android.preference.PreferenceManager;
@@ -98,6 +99,8 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 	private ListPreference prefOverlayTextColor;
 
 	private ListPreference prefOverlayBackground;
+
+	private CheckBoxPreference prefOverlayVideo;
 
 	private int calcGcd(int a, int b) {
 		if (b == 0)
@@ -304,6 +307,7 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 
 	private void updateOverlayPrefStatus(SharedPreferences prefs) {
 		boolean enabled = prefs.getBoolean("pref_overlay_enabled", true);
+		prefOverlayVideo.setEnabled(enabled);
 		prefOverlayPosition.setEnabled(enabled);
 		prefOverlaySize.setEnabled(enabled);
 		prefOverlayContent.setEnabled(enabled);
@@ -554,6 +558,7 @@ public class SettingsCommon implements OnSharedPreferenceChangeListener, SeekBar
 		prefOverlayCustomFormat = (EditTextPreference) screen.findPreference("pref_overlay_custom_format");
 		prefOverlayTextColor = (ListPreference) screen.findPreference("pref_overlay_text_color");
 		prefOverlayBackground = (ListPreference) screen.findPreference("pref_overlay_background");
+		prefOverlayVideo = (CheckBoxPreference) screen.findPreference("pref_overlay_video");
 
 		setZoomRange(prefs);
 		setExposureCompRange(prefs);

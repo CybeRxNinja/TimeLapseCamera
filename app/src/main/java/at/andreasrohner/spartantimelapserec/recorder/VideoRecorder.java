@@ -32,7 +32,10 @@ import android.media.MediaRecorder;
 import android.media.MediaRecorder.OnErrorListener;
 import android.media.MediaRecorder.OnInfoListener;
 import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
+import android.widget.Toast;
+import at.andreasrohner.spartantimelapserec.R;
 import at.andreasrohner.spartantimelapserec.data.RecSettings;
 
 public class VideoRecorder extends Recorder implements OnInfoListener,
@@ -40,6 +43,8 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 	protected MediaRecorder mMediaRecorder;
 	protected int mRate;
 	protected File mLastOutputFile;
+	/** Wall clock (System.currentTimeMillis) when recording started. */
+	protected long mRecordStartWallMs;
 
 	/**
 	 * Resolve a usable CamcorderProfile: never let CamcorderProfile.get throw
@@ -107,11 +112,109 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 		muteShutter();
 		releaseMediaRecorder();
 
-		if (mLastOutputFile != null && mLastOutputFile.isFile()
-				&& mLastOutputFile.length() > 0)
-			scanSavedFile(mLastOutputFile, "video/mp4");
+		final File output = mLastOutputFile;
+		final Context appCtx = mContext != null
+				&& mContext.getApplicationContext() != null
+				? mContext.getApplicationContext() : mContext;
+		final RecSettings settings = mSettings;
+		final long startWallMs = mRecordStartWallMs;
+
+		if (output != null && output.isFile()
+				&& output.length() > 0)
+			scanSavedFile(output, "video/mp4");
 
 		super.stop();
+
+		// VideoTimeLapseRecorder inherits this stop() without
+		// overriding it, so this hook covers both video modes exactly
+		// once. Never let stamping break the stop path.
+		try {
+			maybeStampVideoAsync(appCtx, settings, output, startWallMs);
+		} catch (Throwable t) {
+			Log.w(getClass().getSimpleName(),
+					"video stamping skipped", t);
+		}
+	}
+
+	/**
+	 * Burns the timestamp into the finished MP4 on a background thread
+	 * when both the master overlay switch and "stamp videos too" are on.
+	 * Never blocks the caller; on success the original is replaced by an
+	 * atomic rename and re-scanned, on failure the original is kept.
+	 */
+	private void maybeStampVideoAsync(final Context appCtx,
+			final RecSettings settings, final File output,
+			final long startWallMs) {
+		if (appCtx == null || settings == null || output == null)
+			return;
+		if (!settings.isOverlayEnabled() || !settings.isOverlayVideo())
+			return;
+		if (!output.isFile() || output.length() == 0 || startWallMs <= 0)
+			return;
+		final Handler main = new Handler(Looper.getMainLooper());
+		main.post(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					Toast.makeText(appCtx,
+							R.string.video_stamp_started,
+							Toast.LENGTH_SHORT).show();
+				} catch (Throwable ignored) {
+				}
+			}
+		});
+		final String logTag = getClass().getSimpleName();
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				File stamped = null;
+				try {
+					stamped = VideoTimestampStamper.stampVideo(appCtx,
+							output, startWallMs);
+				} catch (Throwable t) {
+					Log.w(logTag,
+							"stamping failed, keeping original", t);
+					stamped = null;
+				}
+				boolean replaced = false;
+				if (stamped != null && stamped.isFile()
+						&& stamped.length() > 0) {
+					try {
+						if (stamped.renameTo(output)) {
+							replaced = true;
+							scanSavedFile(appCtx, output, "video/mp4");
+						} else {
+							Log.w(logTag,
+									"cannot replace " + output
+									+ ", keeping original");
+							try {
+								stamped.delete();
+							} catch (Throwable ignored) {
+							}
+						}
+					} catch (Throwable t) {
+						Log.w(logTag,
+								"replace failed, keeping original", t);
+						try {
+							stamped.delete();
+						} catch (Throwable ignored) {
+						}
+					}
+				}
+				final int msgId = replaced ? R.string.video_stamp_done
+						: R.string.video_stamp_failed;
+				main.post(new Runnable() {
+					@Override
+					public void run() {
+						try {
+							Toast.makeText(appCtx, msgId,
+									Toast.LENGTH_SHORT).show();
+						} catch (Throwable ignored) {
+						}
+					}
+				});
+			}
+		}).start();
 	}
 
 	protected void setCameraParams() throws IOException {
@@ -231,6 +334,7 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 		if (mSettings.getVideoEncodingBitRate()>0) mMediaRecorder.setVideoEncodingBitRate(mSettings.getVideoEncodingBitRate());
 		mMediaRecorder.prepare();
 
+		mRecordStartWallMs = System.currentTimeMillis();
 		mMediaRecorder.start();
 	}
 

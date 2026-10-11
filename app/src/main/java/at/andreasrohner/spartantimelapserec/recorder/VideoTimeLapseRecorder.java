@@ -90,6 +90,7 @@ public class VideoTimeLapseRecorder extends VideoRecorder {
 		if (mSettings.getVideoEncodingBitRate()>0) mMediaRecorder.setVideoEncodingBitRate(mSettings.getVideoEncodingBitRate());
 		mMediaRecorder.prepare();
 
+		mRecordStartWallMs = System.currentTimeMillis();
 		mMediaRecorder.start();
 	}
 }

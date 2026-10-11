@@ -93,7 +93,9 @@
     <string name="notification_restapi">REST API Running</string>
     <string name="pref_overlay_category">Timestamp overlay (CCTV style)</string>
     <string name="pref_overlay_enabled">Burn date/time into photos</string>
-    <string name="pref_overlay_enabled_summ">Draw a CCTV-style timestamp onto every captured still image (JPEG timelapse modes only)</string>
+    <string name="pref_overlay_enabled_summ">Draw a CCTV-style timestamp onto every captured still image, and into MP4 videos when stamping videos is enabled below</string>
+    <string name="pref_overlay_video">Stamp videos too</string>
+    <string name="pref_overlay_video_summ">Also burn the timestamp into MP4 videos after recording stops, using the same appearance settings</string>
     <string name="pref_overlay_position">Overlay position</string>
     <string name="pref_overlay_size">Overlay size</string>
     <string name="pref_overlay_content">Overlay content</string>
@@ -105,4 +107,7 @@
     <string name="pref_overlay_text_color">Text color</string>
     <string name="pref_overlay_background">Background shading</string>
     <string name="pref_overlay_background_summ">Background opacity: Transparent is none, Light is low, Medium is medium, Dark is high</string>
+    <string name="video_stamp_started">Burning timestamp into video in the background</string>
+    <string name="video_stamp_done">Video timestamp finished</string>
+    <string name="video_stamp_failed">Video stamping failed, original video kept</string>
 </resources>

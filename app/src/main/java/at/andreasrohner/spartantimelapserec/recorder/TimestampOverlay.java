@@ -42,8 +42,10 @@ import at.andreasrohner.spartantimelapserec.data.RecSettings;
  * so every still image (IMAGE_TIME_LAPSE mode, including the power-saving
  * variant which inherits that method) carries the stamp. Direct MediaRecorder
  * video modes ({@code VideoRecorder}, {@code VideoTimeLapseRecorder}) feed the
- * camera straight to the encoder with no frame callback, so they cannot carry
- * a burned-in stamp without a Camera2/MediaCodec rewrite.</p>
+ * camera straight to the encoder with no frame callback, so they are
+ * stamped after the fact instead: {@link VideoTimestampStamper} transcodes
+ * the finished MP4 frame-by-frame and reuses
+ * {@link #applyOverlay(Bitmap, RecSettings, int, long)} for every frame.</p>
  */
 public final class TimestampOverlay {
 

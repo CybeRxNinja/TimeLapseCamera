@@ -227,11 +227,21 @@ public abstract class Recorder {
 	 * visible copy through MediaStore there; scan the file directly below that.
 	 */
 	protected void scanSavedFile(File file, String mimeType) {
-		if (file == null || mContext == null)
+		scanSavedFile(mContext, file, mimeType);
+	}
+
+	/**
+	 * Context-explicit variant so background work started in
+	 * {@link VideoRecorder#stop()} can re-scan the final file after
+	 * {@code mContext} has been released.
+	 */
+	protected static void scanSavedFile(Context ctx, File file,
+			String mimeType) {
+		if (file == null || ctx == null)
 			return;
 		try {
-			Context ctx = mContext.getApplicationContext() != null ? mContext
-					.getApplicationContext() : mContext;
+			Context appCtx = ctx.getApplicationContext() != null ? ctx
+					.getApplicationContext() : ctx;
 			if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
 				android.content.ContentValues values = new android.content.ContentValues();
 				values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
@@ -244,14 +254,14 @@ public abstract class Recorder {
 				android.net.Uri collection = mimeType != null
 						&& mimeType.startsWith("video") ? android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
 						: android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-				android.net.Uri uri = ctx.getContentResolver().insert(
+				android.net.Uri uri = appCtx.getContentResolver().insert(
 						collection, values);
 				if (uri != null) {
 					java.io.InputStream in = null;
 					java.io.OutputStream out = null;
 					try {
 						in = new java.io.FileInputStream(file);
-						out = ctx.getContentResolver().openOutputStream(uri);
+						out = appCtx.getContentResolver().openOutputStream(uri);
 						byte[] buf = new byte[8192];
 						int n;
 						while ((n = in.read(buf)) != -1)
@@ -271,7 +281,7 @@ public abstract class Recorder {
 					return;
 				}
 			}
-			android.media.MediaScannerConnection.scanFile(ctx,
+			android.media.MediaScannerConnection.scanFile(appCtx,
 					new String[] { file.getAbsolutePath() },
 					new String[] { mimeType }, null);
 		} catch (Exception e) {

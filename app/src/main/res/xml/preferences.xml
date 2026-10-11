@@ -87,6 +87,11 @@
             android:key="pref_overlay_enabled"
             android:summary="@string/pref_overlay_enabled_summ"
             android:title="@string/pref_overlay_enabled" />
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:key="pref_overlay_video"
+            android:summary="@string/pref_overlay_video_summ"
+            android:title="@string/pref_overlay_video" />
         <ListPreference
             android:defaultValue="bottom_right"
             android:dialogTitle="@string/pref_overlay_position"

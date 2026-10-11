@@ -21,9 +21,13 @@ still gets a date/time stamp burned into the frame, CCTV-style. Options:
 - Background shading: transparent / 40% / 60% (default) / 80% black pill
 
 Scope: the stamp covers `IMAGE_TIME_LAPSE` captures ("Time Lapsed Images
-(JPG)"), including the power-saving variant. Direct `VIDEO` and
-`VIDEO_TIME_LAPSE` modes are NOT stamped (frames go straight to
-`MediaRecorder` with no point to draw text).
+(JPG)"), including the power-saving variant. `VIDEO` and
+`VIDEO_TIME_LAPSE` MP4s are stamped too when "Stamp videos too" is on
+(default): after recording stops, each file is transcoded in the
+background with the running date/time burned into every frame, using the
+same appearance settings above. Transcoding takes a while on long clips
+and re-encodes the video (audio is copied untouched); the original file
+is kept if stamping fails.
 
 ### 2. GitHub Action that builds/releases the debug APK
 
