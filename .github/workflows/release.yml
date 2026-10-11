@@ -56,9 +56,14 @@ jobs:
           "$ZIPALIGN" -c -p 4 "$UNSIGNED"
           mkdir -p dist
           SIGNED="dist/app-release.apk"
-          "$APKSIGNER" sign --ks /tmp/release.keystore \
+          if ! "$APKSIGNER" sign --ks /tmp/release.keystore \
             --ks-pass env:STORE_PASSWORD --ks-key-alias "$KEY_ALIAS" \
-            --key-pass env:KEY_PASSWORD --out "$SIGNED" "$UNSIGNED"
+            --key-pass env:KEY_PASSWORD --out "$SIGNED" "$UNSIGNED"; then
+            echo "First sign attempt failed; retrying with STORE_PASSWORD as key password (PKCS12 keytool quirk)..."
+            "$APKSIGNER" sign --ks /tmp/release.keystore \
+              --ks-pass env:STORE_PASSWORD --ks-key-alias "$KEY_ALIAS" \
+              --key-pass env:STORE_PASSWORD --out "$SIGNED" "$UNSIGNED"
+          fi
           "$APKSIGNER" verify --print-certs "$SIGNED"
           rm -f /tmp/release.keystore
       - name: Publish GitHub Release
