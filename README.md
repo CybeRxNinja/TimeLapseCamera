@@ -17,6 +17,7 @@ still gets a date/time stamp burned into the frame, CCTV-style. Options:
 - Size: small / medium (default) / large
 - Content: date+time (default) / date / time / date+time+frame counter
 - Format: `SimpleDateFormat` presets (default `yyyy-MM-dd HH:mm:ss`) or custom pattern (invalid falls back to default)
+- Two-line stamp: the `2026-01-31 + 14:05:22 (two lines)` preset stacks date over time (extra lines are capped at 3)
 - Text color: white (default) / yellow / green / cyan
 - Background shading: transparent / 40% / 60% (default) / 80% black pill
 

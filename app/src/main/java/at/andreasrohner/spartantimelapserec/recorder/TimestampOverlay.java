@@ -55,6 +55,32 @@ public final class TimestampOverlay {
 	/** Fallback pattern whenever a pattern is invalid. */
 	public static final String FALLBACK_PATTERN = "yyyy-MM-dd HH:mm:ss";
 
+	/** Maximum stamp lines drawn; extra lines from a multiline pattern are dropped. */
+	public static final int MAX_LINES = 3;
+
+	/**
+	 * Splits a formatted stamp on newlines for stacked drawing.
+	 * Never returns an empty array; lines beyond {@link #MAX_LINES} are dropped.
+	 */
+	public static String[] splitLines(String text) {
+		if (text == null || text.isEmpty())
+			return new String[] { "" };
+		String[] parts = text.split("\r?\n", -1);
+		if (parts.length <= MAX_LINES)
+			return parts;
+		String[] capped = new String[MAX_LINES];
+		System.arraycopy(parts, 0, capped, 0, MAX_LINES);
+		return capped;
+	}
+
+	/** Width of the widest line, used to size the background pill. */
+	public static float maxLineWidth(Paint textPaint, String[] lines) {
+		float width = 0f;
+		for (String line : lines)
+			width = Math.max(width, textPaint.measureText(line));
+		return width;
+	}
+
 	private TimestampOverlay() {
 	}
 
@@ -81,23 +107,29 @@ public final class TimestampOverlay {
 		textPaint.setColor(resolveTextColor(settings.getOverlayTextColor()));
 		textPaint.setTextSize(textSize);
 
+		// Canvas.drawText does not render '\n', so split the stamp into lines
+		// (capped at MAX_LINES) and stack them; the pill grows to fit all lines.
+		String[] lines = splitLines(text);
+
 		// Shrink the text until the pill fits even tiny frames.
 		float margin = Math.max(4f, textSize * 0.5f);
 		float padX = textSize * 0.6f;
 		float padY = textSize * 0.4f;
-		float textWidth = textPaint.measureText(text);
+		float textWidth = maxLineWidth(textPaint, lines);
 		while (textWidth + 2 * padX > imgW - 2 * margin && textSize > 8f) {
 			textSize *= 0.9f;
 			textPaint.setTextSize(textSize);
 			margin = Math.max(4f, textSize * 0.5f);
 			padX = textSize * 0.6f;
 			padY = textSize * 0.4f;
-			textWidth = textPaint.measureText(text);
+			textWidth = maxLineWidth(textPaint, lines);
 		}
 
 		Paint.FontMetrics fm = textPaint.getFontMetrics();
+		float lineHeight = fm.descent - fm.ascent;
+		float lineGap = textSize * 0.15f;
 		float boxW = textWidth + 2 * padX;
-		float boxH = (fm.descent - fm.ascent) + 2 * padY;
+		float boxH = lines.length * lineHeight + (lines.length - 1) * lineGap + 2 * padY;
 
 		float[] pos = boxPosition(settings.getOverlayPosition(), imgW, imgH,
 				boxW, boxH, margin);
@@ -115,7 +147,10 @@ public final class TimestampOverlay {
 					textSize * 0.3f, textSize * 0.3f, bg);
 		}
 
-		canvas.drawText(text, left + padX, top + padY - fm.ascent, textPaint);
+		for (int i = 0; i < lines.length; i++) {
+			float baseline = top + padY - fm.ascent + i * (lineHeight + lineGap);
+			canvas.drawText(lines[i], left + padX, baseline, textPaint);
+		}
 		return bitmap;
 	}
 

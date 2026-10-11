@@ -55,6 +55,10 @@
         <item>31.01.2026 14:05:22</item>
         <item>01/31/2026 02:05 PM</item>
         <item>14:05:22 31-01-2026</item>
+        <item>2026-01-31 + 14:05:22 (two lines)</item>
+        <item>14:05:22</item>
+        <item>2026-01-31</item>
+        <item>Sat, 2026-01-31 14:05:22</item>
         <item>Custom (see below)</item>
     </string-array>
     <string-array name="pref_overlay_format_values">
@@ -62,6 +66,10 @@
         <item>dd.MM.yyyy HH:mm:ss</item>
         <item>MM/dd/yyyy hh:mm a</item>
         <item>HH:mm:ss dd-MM-yyyy</item>
+        <item>yyyy-MM-dd&#10;HH:mm:ss</item>
+        <item>HH:mm:ss</item>
+        <item>yyyy-MM-dd</item>
+        <item>EEE, yyyy-MM-dd HH:mm:ss</item>
         <item>custom</item>
     </string-array>
 
