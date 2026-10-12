@@ -44,7 +44,7 @@ import at.andreasrohner.spartantimelapserec.data.RecSettings;
  * recording. Instead, after the recorder is released, this class transcodes
  * the finished file frame-by-frame: decode (ByteBuffer mode) to YUV, convert
  * to a {@link Bitmap}, draw the running timestamp with
- * {@link TimestampOverlay#applyOverlay(Bitmap, RecSettings, int, long)},
+ * {@link TimestampOverlay#applyOverlay(Bitmap, RecSettings, int, long, int)},
  * convert back to YUV and re-encode to H.264 via {@link MediaMuxer}. An
  * audio track, when present (VIDEO mode records mic audio), is copied
  * through untouched; VIDEO_TIME_LAPSE files have no audio track and are
@@ -80,6 +80,12 @@ public final class VideoTimestampStamper {
 
 	private static final String MIME_AVC = "video/avc";
 
+	/**
+	 * Suffix of the temporary stamp output (a sibling of the input file).
+	 * {@link Recorder} sweeps leftovers with this suffix at init.
+	 */
+	static final String STAMP_TMP_SUFFIX = ".stamped.tmp.mp4";
+
 	private VideoTimestampStamper() {
 	}
 
@@ -89,13 +95,19 @@ public final class VideoTimestampStamper {
 	 * @param context            used only to load overlay appearance settings
 	 * @param inputMp4           finished recording (must exist, non-empty)
 	 * @param startWallClockMs   {@code System.currentTimeMillis()} captured
-	 *                           when recording started; a frame's stamp is
-	 *                           this plus its {@code presentationTimeUs}
+	 *                           when recording started
+	 * @param endWallClockMs     {@code System.currentTimeMillis()} captured
+	 *                           when recording stopped; the record span
+	 *                           (end - start) is the real capture time the
+	 *                           muxed (playback-compressed) presentation
+	 *                           times are scaled against, so every frame
+	 *                           gets its true capture wall clock in both
+	 *                           VIDEO and VIDEO_TIME_LAPSE mode
 	 * @return the temp stamped file (sibling of the input) on success,
 	 *         {@code null} on any failure (original is left untouched)
 	 */
 	public static File stampVideo(Context context, File inputMp4,
-			long startWallClockMs) {
+			long startWallClockMs, long endWallClockMs) {
 		if (context == null || inputMp4 == null || !inputMp4.isFile()
 				|| inputMp4.length() == 0 || startWallClockMs <= 0)
 			return null;
@@ -110,9 +122,10 @@ public final class VideoTimestampStamper {
 			return null;
 		}
 		File tmp = new File(inputMp4.getParent(),
-				inputMp4.getName() + ".stamped.tmp.mp4");
+				inputMp4.getName() + STAMP_TMP_SUFFIX);
 		try {
-			transcode(inputMp4, tmp, settings, startWallClockMs);
+			transcode(inputMp4, tmp, settings, startWallClockMs,
+					endWallClockMs);
 		} catch (Throwable t) {
 			Log.w(TAG, "stamping failed for " + inputMp4, t);
 			try {
@@ -134,7 +147,8 @@ public final class VideoTimestampStamper {
 	}
 
 	private static void transcode(File input, File output,
-			RecSettings settings, long startWallMs) throws Exception {
+			RecSettings settings, long startWallMs, long endWallMs)
+			throws Exception {
 		MediaExtractor extractor = new MediaExtractor();
 		MediaCodec decoder = null;
 		MediaCodec encoder = null;
@@ -183,6 +197,7 @@ public final class VideoTimestampStamper {
 				rotation = videoFormat.getInteger(MediaFormat.KEY_ROTATION);
 			} catch (Exception ignored) {
 			}
+			rotation = ((rotation % 360) + 360) % 360;
 			long bitrate = (long) width * height * frameRate / 8;
 			try {
 				int inBr = videoFormat.getInteger(MediaFormat.KEY_BIT_RATE);
@@ -196,6 +211,13 @@ public final class VideoTimestampStamper {
 				bitrate = 20000000;
 
 			extractor.selectTrack(videoTrack);
+
+			// Total media duration (microseconds) is the denominator of the
+			// pts -> wall-clock mapping: muxed pts is playback time (heavily
+			// compressed in timelapse mode), never capture time.
+			long totalDurationUs = readTrackDurationUs(videoFormat);
+			if (totalDurationUs <= 0)
+				totalDurationUs = scanMaxSampleTimeUs(extractor);
 
 			decoder = MediaCodec.createDecoderByType(videoMime);
 			decoder.configure(videoFormat, null, null, 0);
@@ -244,8 +266,8 @@ public final class VideoTimestampStamper {
 			}
 
 			copyVideo(extractor, decoder, strideInfo, encoder,
-					encoderSemiPlanar, muxer, settings, startWallMs, width,
-					height);
+					encoderSemiPlanar, muxer, settings, startWallMs,
+					endWallMs, rotation, totalDurationUs, width, height);
 
 			// Muxer is started inside copyVideo once the encoder output
 			// format is known; without it there is nothing to attach
@@ -296,11 +318,19 @@ public final class VideoTimestampStamper {
 	 * Decodes every video frame, stamps it and feeds it to the encoder,
 	 * writing encoded samples to the muxer. Starts the muxer on the first
 	 * encoder output format change.
+	 *
+	 * <p>The stamp is laid out in display space via the rotation-aware
+	 * {@link TimestampOverlay#applyOverlay(Bitmap, RecSettings, int, long, int)}
+	 * so it reads upright after the muxer's orientation hint is applied at
+	 * playback, and each frame's wall clock is honestly scaled from the
+	 * record span instead of assuming {@code start + pts} (wrong for
+	 * timelapse, where pts is playback-compressed).</p>
 	 */
 	private static void copyVideo(MediaExtractor extractor, MediaCodec decoder,
 			int[] strideInfo, MediaCodec encoder, boolean encoderSemiPlanar,
 			MediaMuxer muxer, RecSettings settings, long startWallMs,
-			int width, int height) throws Exception {
+			long endWallMs, int rotation, long totalDurationUs, int width,
+			int height) throws Exception {
 		MediaCodec.BufferInfo decInfo = new MediaCodec.BufferInfo();
 		MediaCodec.BufferInfo encInfo = new MediaCodec.BufferInfo();
 		boolean extractorDone = false;
@@ -352,10 +382,11 @@ public final class VideoTimestampStamper {
 								strideInfo[2], argb);
 						Bitmap work = frame;
 						try {
-							long wallMs = startWallMs + ptsUs / 1000;
+							long wallMs = wallClockFor(startWallMs,
+									endWallMs, totalDurationUs, ptsUs);
 							Bitmap stamped = TimestampOverlay.applyOverlay(
 									frame, settings, (int) (frameIndex + 1),
-									wallMs);
+									wallMs, rotation);
 							if (stamped != null)
 								work = stamped;
 						} catch (Throwable t) {
@@ -418,6 +449,106 @@ public final class VideoTimestampStamper {
 
 		if (!muxerStarted)
 			throw new IOException("no encoded video output produced");
+	}
+
+	/**
+	 * Maps a frame's presentation time (muxed, playback timeline) to the
+	 * wall clock at which it was actually captured.
+	 *
+	 * <p>{@code start + pts} would only be right for a realtime clip; a
+	 * timelapse compresses hours of capture into seconds of playback, so
+	 * that formula yields near-identical, effectively dummy times. Instead
+	 * pts is scaled linearly across the real record span:
+	 * {@code wallMs = start + pts * (end - start) / totalDurationUs},
+	 * clamped to {@code [start, start + span]}. For normal VIDEO mode
+	 * {@code end - start} is approximately the clip duration, so the result
+	 * stays realtime; for timelapse it stretches back to true capture time.
+	 * When the span is unknown (end missing/earlier than start) the clip
+	 * duration is used as the span, i.e. realtime behavior.</p>
+	 */
+	private static long wallClockFor(long startWallMs, long endWallMs,
+			long totalDurationUs, long ptsUs) {
+		long totalUs = totalDurationUs;
+		if (totalUs <= 0)
+			totalUs = 1;
+		long spanMs = endWallMs - startWallMs;
+		if (spanMs <= 0)
+			spanMs = (totalUs + 999) / 1000;
+		if (ptsUs < 0)
+			ptsUs = 0;
+		if (ptsUs > totalUs)
+			ptsUs = totalUs;
+		long offsetMs;
+		if (ptsUs != 0 && ptsUs > Long.MAX_VALUE / spanMs) {
+			// Overflow-safe path for absurdly long spans/pts.
+			offsetMs = (long) ((double) ptsUs * (double) spanMs
+					/ (double) totalUs);
+		} else {
+			offsetMs = ptsUs * spanMs / totalUs;
+		}
+		long wallMs = startWallMs + offsetMs;
+		if (wallMs < startWallMs)
+			wallMs = startWallMs;
+		if (wallMs > startWallMs + spanMs)
+			wallMs = startWallMs + spanMs;
+		return wallMs;
+	}
+
+	/**
+	 * Track duration in microseconds from the extractor format, or 0 when
+	 * unavailable. {@code KEY_DURATION} is documented as a long, but some
+	 * extractors store it as an int, so both accessors are tried.
+	 */
+	private static long readTrackDurationUs(MediaFormat format) {
+		if (format == null)
+			return 0;
+		try {
+			if (format.containsKey(MediaFormat.KEY_DURATION)) {
+				try {
+					long durationUs = format.getLong(MediaFormat.KEY_DURATION);
+					if (durationUs > 0)
+						return durationUs;
+				} catch (Exception ignored) {
+				}
+				try {
+					int durationUs = format.getInteger(MediaFormat.KEY_DURATION);
+					if (durationUs > 0)
+						return durationUs;
+				} catch (Exception ignored) {
+				}
+			}
+		} catch (Exception ignored) {
+		}
+		return 0;
+	}
+
+	/**
+	 * Fallback duration: walks the selected track's sample index for the
+	 * largest presentation time, then rewinds the extractor so the decode
+	 * pass starts at the beginning of the stream again.
+	 */
+	private static long scanMaxSampleTimeUs(MediaExtractor extractor) {
+		long maxUs = 0;
+		try {
+			extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+			int guard = 0;
+			while (guard++ < 10000000) {
+				long sampleTime = extractor.getSampleTime();
+				if (sampleTime < 0)
+					break;
+				if (sampleTime > maxUs)
+					maxUs = sampleTime;
+				if (!extractor.advance())
+					break;
+			}
+		} catch (Exception e) {
+			Log.w(TAG, "cannot scan media duration", e);
+		}
+		try {
+			extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+		} catch (Exception ignored) {
+		}
+		return maxUs;
 	}
 
 	private static void feedEncoder(MediaCodec encoder, byte[] yuv,

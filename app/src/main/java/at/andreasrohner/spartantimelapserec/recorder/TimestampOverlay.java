@@ -45,7 +45,8 @@ import at.andreasrohner.spartantimelapserec.data.RecSettings;
  * camera straight to the encoder with no frame callback, so they are
  * stamped after the fact instead: {@link VideoTimestampStamper} transcodes
  * the finished MP4 frame-by-frame and reuses
- * {@link #applyOverlay(Bitmap, RecSettings, int, long)} for every frame.</p>
+ * {@link #applyOverlay(Bitmap, RecSettings, int, long, int)} for every frame
+ * (the rotation-aware overload, so the stamp lays out in display space).</p>
  */
 public final class TimestampOverlay {
 
@@ -87,9 +88,25 @@ public final class TimestampOverlay {
 	/**
 	 * Draws the configured timestamp onto {@code src} and returns a mutable
 	 * bitmap holding the result (the source itself when already mutable).
+	 * Equivalent to the 5-arg overload with {@code rotationDeg = 0}.
 	 */
 	public static Bitmap applyOverlay(Bitmap src, RecSettings settings,
 			int frameNumber, long captureTimeMillis) {
+		return applyOverlay(src, settings, frameNumber, captureTimeMillis, 0);
+	}
+
+	/**
+	 * Rotation-aware variant: {@code rotationDeg} is the clockwise rotation
+	 * the muxer's {@code setOrientationHint} will apply at playback (0, 90,
+	 * 180 or 270). The stamp is laid out against the DISPLAY dimensions
+	 * (swapped when the rotation turns the frame) and drawn through the
+	 * inverse transform, so once the player rotates the picture the text
+	 * reads upright in the chosen corner — not sideways or upside down.
+	 *
+	 * @param rotationDeg clockwise display rotation of this frame, degrees
+	 */
+	public static Bitmap applyOverlay(Bitmap src, RecSettings settings,
+			int frameNumber, long captureTimeMillis, int rotationDeg) {
 		String text = buildText(settings, frameNumber, captureTimeMillis);
 		if (text == null || text.isEmpty())
 			return src;
@@ -98,10 +115,18 @@ public final class TimestampOverlay {
 		if (bitmap == null)
 			return src;
 
+		// Stored (pre-rotation) frame size...
 		int imgW = bitmap.getWidth();
 		int imgH = bitmap.getHeight();
 
-		float textSize = textSizeFor(settings.getOverlaySize(), imgW, imgH);
+		// ...but everything is sized and positioned in display space: a
+		// 90/270 rotation swaps the visible width and height.
+		int rot = ((rotationDeg % 360) + 360) % 360;
+		boolean swap = (rot % 180) != 0;
+		int dispW = swap ? imgH : imgW;
+		int dispH = swap ? imgW : imgH;
+
+		float textSize = textSizeFor(settings.getOverlaySize(), dispW, dispH);
 
 		Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 		textPaint.setColor(resolveTextColor(settings.getOverlayTextColor()));
@@ -116,7 +141,7 @@ public final class TimestampOverlay {
 		float padX = textSize * 0.6f;
 		float padY = textSize * 0.4f;
 		float textWidth = maxLineWidth(textPaint, lines);
-		while (textWidth + 2 * padX > imgW - 2 * margin && textSize > 8f) {
+		while (textWidth + 2 * padX > dispW - 2 * margin && textSize > 8f) {
 			textSize *= 0.9f;
 			textPaint.setTextSize(textSize);
 			margin = Math.max(4f, textSize * 0.5f);
@@ -131,12 +156,32 @@ public final class TimestampOverlay {
 		float boxW = textWidth + 2 * padX;
 		float boxH = lines.length * lineHeight + (lines.length - 1) * lineGap + 2 * padY;
 
-		float[] pos = boxPosition(settings.getOverlayPosition(), imgW, imgH,
+		float[] pos = boxPosition(settings.getOverlayPosition(), dispW, dispH,
 				boxW, boxH, margin);
 		float left = pos[0];
 		float top = pos[1];
 
 		Canvas canvas = new Canvas(bitmap);
+
+		// Draw in display coordinates, mapped onto the stored frame by the
+		// inverse of the muxer rotation (display -> stored):
+		//   90  -> translate(0, imgH);  rotate(-90)
+		//   180 -> translate(imgW, imgH); rotate(180)
+		//   270 -> translate(imgW, 0);  rotate(90)
+		// All four display corners land exactly on stored corners, so the
+		// box is neither clipped nor skewed once the player applies the
+		// clockwise rotation hint.
+		canvas.save();
+		if (rot == 90) {
+			canvas.translate(0, imgH);
+			canvas.rotate(-90);
+		} else if (rot == 180) {
+			canvas.translate(imgW, imgH);
+			canvas.rotate(180);
+		} else if (rot == 270) {
+			canvas.translate(imgW, 0);
+			canvas.rotate(90);
+		}
 
 		int alpha = backgroundAlpha(settings.getOverlayBackground());
 		if (alpha > 0) {
@@ -151,6 +196,7 @@ public final class TimestampOverlay {
 			float baseline = top + padY - fm.ascent + i * (lineHeight + lineGap);
 			canvas.drawText(lines[i], left + padX, baseline, textPaint);
 		}
+		canvas.restore();
 		return bitmap;
 	}
 

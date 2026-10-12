@@ -109,6 +109,9 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 
 	@Override
 	public void stop() {
+		// Real end of recording: with the start value this defines the
+		// capture span the stamp pass scales presentation times against.
+		final long endWallMs = System.currentTimeMillis();
 		muteShutter();
 		releaseMediaRecorder();
 
@@ -118,8 +121,19 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 				? mContext.getApplicationContext() : mContext;
 		final RecSettings settings = mSettings;
 		final long startWallMs = mRecordStartWallMs;
+		// Identity of the original for the pre-rename clobber guard.
+		final long origLength = output != null ? output.length() : 0L;
+		final long origMtime = output != null ? output.lastModified() : 0L;
 
-		if (output != null && output.isFile()
+		// The file is scanned exactly once, AFTER its final state is known:
+		// when the stamp pass will run the scan lives there (right after the
+		// atomic replace, or of the untouched original on failure), because
+		// scanning here used to publish the pre-stamp file and leave a
+		// duplicate gallery entry plus the finished MP4 beside it. Only when
+		// no stamp pass runs is the file already final and scanned here.
+		final boolean stampPending = needsVideoStamp(settings, output,
+				startWallMs);
+		if (!stampPending && output != null && output.isFile()
 				&& output.length() > 0)
 			scanSavedFile(output, "video/mp4");
 
@@ -129,7 +143,8 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 		// overriding it, so this hook covers both video modes exactly
 		// once. Never let stamping break the stop path.
 		try {
-			maybeStampVideoAsync(appCtx, settings, output, startWallMs);
+			maybeStampVideoAsync(appCtx, settings, output, startWallMs,
+					endWallMs, origLength, origMtime, stampPending);
 		} catch (Throwable t) {
 			Log.w(getClass().getSimpleName(),
 					"video stamping skipped", t);
@@ -137,19 +152,50 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 	}
 
 	/**
+	 * Whether this recording gets the post-pass stamp: both overlay
+	 * switches on, plus a finished non-empty output with a known start
+	 * time. stop() and {@link #maybeStampVideoAsync} share this decision so
+	 * the file is scanned exactly once.
+	 */
+	private static boolean needsVideoStamp(RecSettings settings, File output,
+			long startWallMs) {
+		if (settings == null || output == null)
+			return false;
+		if (!settings.isOverlayEnabled() || !settings.isOverlayVideo())
+			return false;
+		return output.isFile() && output.length() > 0 && startWallMs > 0;
+	}
+
+	/**
+	 * True while {@code output} is still exactly the file we finished
+	 * recording: same size and mtime as when the recorder released it.
+	 * {@link #getOutputFile(String)} only reuses a name after the previous
+	 * file is deleted, so a mismatch means the path no longer holds our
+	 * original and must not be overwritten by the stamped temp.
+	 */
+	private static boolean stillOriginal(File output, long length,
+			long mtime) {
+		if (output == null || length <= 0)
+			return false;
+		if (!output.isFile())
+			return false;
+		return output.length() == length && output.lastModified() == mtime;
+	}
+
+	/**
 	 * Burns the timestamp into the finished MP4 on a background thread
 	 * when both the master overlay switch and "stamp videos too" are on.
 	 * Never blocks the caller; on success the original is replaced by an
-	 * atomic rename and re-scanned, on failure the original is kept.
+	 * atomic rename and the final file is scanned once, on failure the
+	 * original is kept and scanned once (never the intermediate state).
 	 */
 	private void maybeStampVideoAsync(final Context appCtx,
 			final RecSettings settings, final File output,
-			final long startWallMs) {
-		if (appCtx == null || settings == null || output == null)
-			return;
-		if (!settings.isOverlayEnabled() || !settings.isOverlayVideo())
-			return;
-		if (!output.isFile() || output.length() == 0 || startWallMs <= 0)
+			final long startWallMs, final long endWallMs,
+			final long origLength, final long origMtime,
+			final boolean stampPending) {
+		if (!stampPending || appCtx == null || settings == null
+				|| output == null)
 			return;
 		final Handler main = new Handler(Looper.getMainLooper());
 		main.post(new Runnable() {
@@ -170,7 +216,7 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 				File stamped = null;
 				try {
 					stamped = VideoTimestampStamper.stampVideo(appCtx,
-							output, startWallMs);
+							output, startWallMs, endWallMs);
 				} catch (Throwable t) {
 					Log.w(logTag,
 							"stamping failed, keeping original", t);
@@ -180,9 +226,19 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 				if (stamped != null && stamped.isFile()
 						&& stamped.length() > 0) {
 					try {
-						if (stamped.renameTo(output)) {
+						if (!stillOriginal(output, origLength, origMtime)) {
+							Log.w(logTag, "target changed since recording, "
+									+ "not replacing " + output);
+							try {
+								stamped.delete();
+							} catch (Throwable ignored) {
+							}
+						} else if (stamped.renameTo(output)) {
+							// Same-directory rename(2): atomically replaces
+							// the original, so readers never see a partial
+							// file; the length/mtime guard above makes sure
+							// we replace our own recording only.
 							replaced = true;
-							scanSavedFile(appCtx, output, "video/mp4");
 						} else {
 							Log.w(logTag,
 									"cannot replace " + output
@@ -201,6 +257,13 @@ public class VideoRecorder extends Recorder implements OnInfoListener,
 						}
 					}
 				}
+				// The single MediaStore publish for this recording, done
+				// only now that the final file exists: the replaced MP4 on
+				// success, the untouched original on failure. The pre-stamp
+				// file is never scanned, so there is exactly one gallery
+				// entry and no stray .stamped.tmp.mp4 in the listing.
+				if (output != null && output.isFile() && output.length() > 0)
+					scanSavedFile(appCtx, output, "video/mp4");
 				final int msgId = replaced ? R.string.video_stamp_done
 						: R.string.video_stamp_failed;
 				main.post(new Runnable() {

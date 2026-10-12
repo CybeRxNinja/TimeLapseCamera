@@ -99,7 +99,51 @@ public abstract class Recorder {
 			return;
 		}
 
+		// Sweep stamp temps orphaned by a killed/crashed run: without this
+		// a *.stamped.tmp.mp4 could linger forever next to its recording.
+		sweepStaleStampTemps(mOutputDir);
+
 		mInitDelay = settings.getInitDelay();
+	}
+
+	/**
+	 * Age after which a leftover stamp temp file is considered stale.
+	 * Active temps keep getting written by the muxer (mtime stays fresh),
+	 * so this also protects a stamp thread still running from a previous
+	 * recorder instance in the same process.
+	 */
+	private static final long STALE_STAMP_TMP_AGE_MS = 10 * 60 * 1000L;
+
+	/**
+	 * Deletes leftover {@code VideoTimestampStamper} outputs
+	 * ({@code *.stamped.tmp.mp4}) untouched for at least
+	 * {@link #STALE_STAMP_TMP_AGE_MS}. The stamper removes its own temp on
+	 * success (rename) and on failure (delete); only a process kill can
+	 * leave one behind.
+	 */
+	protected static void sweepStaleStampTemps(File dir) {
+		if (dir == null || !dir.isDirectory())
+			return;
+		try {
+			File[] files = dir.listFiles();
+			if (files == null)
+				return;
+			long now = System.currentTimeMillis();
+			for (File file : files) {
+				if (!file.isFile())
+					continue;
+				if (!file.getName().endsWith(
+						VideoTimestampStamper.STAMP_TMP_SUFFIX))
+					continue;
+				if (now - file.lastModified() < STALE_STAMP_TMP_AGE_MS)
+					continue;
+				if (!file.delete())
+					Log.w("TimeLapseCamera",
+							"Cannot delete stale stamp temp " + file);
+			}
+		} catch (Exception e) {
+			Log.w("TimeLapseCamera", "stamp temp sweep failed for " + dir, e);
+		}
 	}
 
 	protected void releaseCamera() {
