@@ -200,6 +200,12 @@ public class HttpThread extends Thread implements HttpOutput, Closeable {
 			return true;
 		}
 
+		// Live preview: MJPEG stream of the newest captured still
+		if (url.startsWith("/1/preview")) {
+			RestService.servePreview(out);
+			return true;
+		}
+
 		if (url.startsWith("/1/device/battery")) {
 			sendReplyHeader(ReplyCode.FOUND, "text/plain");
 			sendLine(String.valueOf(getBatteryLevel()));

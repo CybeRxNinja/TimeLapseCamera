@@ -2,7 +2,7 @@ package at.andreasrohner.spartantimelapserec.preference;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
@@ -49,16 +49,36 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 	public static final String PREF_PREVIEW_ENABLED = "pref_preview_enabled";
 
 	private Camera mCamera;
-	private boolean mDialogVisible;
-	private boolean mSurfaceReady;
-	private boolean mStarting;
+
+	/** Dialog is on screen. Volatile: written on the UI thread, read by the open thread. */
+	private volatile boolean mDialogVisible;
+
+	/** Preview surface exists and can be attached to the camera. */
+	private volatile boolean mSurfaceReady;
+
+	/** A camera open is in flight; cleared only by that thread. */
+	private volatile boolean mStarting;
+
 	private SurfaceHolder mHolder;
-	private View mDialogView;
-	private AlertDialog mDialog;
+
+	/** Dialog content view. Written on the UI thread, read by the open thread. */
+	private volatile View mDialogView;
+
 	private final Object mLock = new Object();
 
 	public IpInformation(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
 		super(context, attrs, defStyleAttr, defStyleRes);
+
+		// DialogPreference only creates the OK button when a positive button text
+		// is set, and the dialog title falls back to the preference title, which
+		// is missing when the preference is built without XML attributes.
+		try {
+			setPositiveButtonText(context.getString(android.R.string.ok));
+			if (getDialogTitle() == null) {
+				setDialogTitle(context.getString(R.string.pref_restapi_connectioninfo_title));
+			}
+		} catch (Throwable ignored) {
+		}
 
 		updateData();
 	}
@@ -78,7 +98,19 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 	@Override
 	protected void showDialog(Bundle state) {
 		updateData();
-		showPreviewDialog();
+		// Framework path: DialogPreference builds and shows the dialog, and - unlike
+		// a hand rolled AlertDialog - registers this preference with the
+		// PreferenceManager, so onActivityDestroy() runs on teardown and the dialog
+		// (and with it the camera) can never outlive the activity.
+		try {
+			super.showDialog(state);
+		} catch (Throwable t) {
+			dismissQuietly();
+			teardownDialog();
+			return;
+		}
+		hideStatus();
+		maybeStartPreview();
 	}
 
 	/**
@@ -115,19 +147,28 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 		}
 	}
 
-	private void showPreviewDialog() {
+	/**
+	 * Build the dialog content for DialogPreference.showDialog().
+	 *
+	 * Returning the view here keeps the row click behaviour (Preference.onClick()
+	 * -> DialogPreference.onClick() -> showDialog(null)) while the framework owns
+	 * the dialog window, its dismissal and the activity destroy registration.
+	 * Cleanup runs in onDismiss() / onActivityDestroy().
+	 */
+	@Override
+	protected View onCreateDialogView() {
 		final Context ctx = getContext();
 		final View view;
 		try {
 			view = LayoutInflater.from(ctx).inflate(R.layout.dialog_ip_preview, null);
 		} catch (Throwable t) {
-			return;
+			return null;
 		}
 		TextView info = view.findViewById(R.id.dialog_ip_preview_info);
 		SurfaceView surface = view.findViewById(R.id.dialog_ip_preview_surface);
 		CheckBox toggle = view.findViewById(R.id.dialog_ip_preview_toggle);
 		if (info == null || surface == null || toggle == null) {
-			return;
+			return null;
 		}
 		info.setText(connectionInfoText(ctx));
 		final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ctx);
@@ -142,41 +183,6 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 		mDialogVisible = true;
 		mSurfaceReady = false;
 
-		AlertDialog dialog;
-		try {
-			dialog = new AlertDialog.Builder(ctx)
-					.setTitle(R.string.pref_restapi_connectioninfo_title)
-					.setView(view)
-					.setPositiveButton(android.R.string.ok, null)
-					.create();
-		} catch (Throwable t) {
-			mDialogView = null;
-			mDialogVisible = false;
-			return;
-		}
-		mDialog = dialog;
-		dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-			@Override
-			public void onDismiss(DialogInterface d) {
-				mDialogVisible = false;
-				releasePreview();
-				detachHolder();
-				mDialog = null;
-				mDialogView = null;
-				try {
-					updateData();
-				} catch (Throwable ignored) {
-				}
-			}
-		});
-		dialog.setOnCancelListener(new DialogInterface.OnCancelListener() {
-			@Override
-			public void onCancel(DialogInterface d) {
-				mDialogVisible = false;
-				releasePreview();
-				detachHolder();
-			}
-		});
 		toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
 			@Override
 			public void onCheckedChanged(CompoundButton button, boolean checked) {
@@ -196,18 +202,64 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 			surface.getHolder().addCallback(this);
 		} catch (Throwable ignored) {
 		}
+		return view;
+	}
+
+	/**
+	 * DialogPreference installs itself as the dialog's OnDismissListener, so this
+	 * override runs on every dismiss path: OK button, back key (the
+	 * OnCancelListener path ends in a dismiss too) and activity teardown.
+	 */
+	@Override
+	public void onDismiss(DialogInterface dialog) {
 		try {
-			dialog.show();
-		} catch (Throwable t) {
-			mDialogVisible = false;
-			releasePreview();
-			detachHolder();
-			mDialog = null;
-			mDialogView = null;
-			return;
+			super.onDismiss(dialog);
+		} catch (Throwable ignored) {
 		}
-		hideStatus();
-		maybeStartPreview();
+		teardownDialog();
+	}
+
+	/**
+	 * Called from PreferenceFragment.onDestroy() via the PreferenceManager,
+	 * because super.showDialog() registered this preference. Dismisses our dialog
+	 * and releases the camera when the activity goes away first.
+	 */
+	@Override
+	public void onActivityDestroy() {
+		try {
+			super.onActivityDestroy();
+		} catch (Throwable ignored) {
+		}
+		dismissQuietly();
+		teardownDialog();
+	}
+
+	/**
+	 * Dismiss the dialog if it is still up. Never throws.
+	 */
+	private void dismissQuietly() {
+		try {
+			Dialog dialog = getDialog();
+			if (dialog != null && dialog.isShowing()) {
+				dialog.dismiss();
+			}
+		} catch (Throwable ignored) {
+		}
+	}
+
+	/**
+	 * Shared cleanup for every way the dialog goes away: stop the camera,
+	 * detach the surface callback, forget the dialog views.
+	 */
+	private void teardownDialog() {
+		mDialogVisible = false;
+		releasePreview();
+		detachHolder();
+		mDialogView = null;
+		try {
+			updateData();
+		} catch (Throwable ignored) {
+		}
 	}
 
 	/**
@@ -217,6 +269,7 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 	 */
 	private void maybeStartPreview() {
 		if (!mDialogVisible || !shouldPreview()) {
+			postStatus(R.string.pref_preview_disabled);
 			return;
 		}
 		try {
@@ -239,28 +292,31 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 			return;
 		}
 		if (!mSurfaceReady) {
+			postStatus(R.string.pref_preview_surface_pending);
 			return;
-		}
-		synchronized (mLock) {
-			if (mCamera != null || mStarting) {
-				return;
-			}
-			mStarting = true;
 		}
 		final SurfaceHolder holder;
 		synchronized (mLock) {
-			holder = mHolder;
-		}
-		if (holder == null) {
-			synchronized (mLock) {
-				mStarting = false;
+			if (mCamera != null) {
+				postStatus(R.string.pref_preview_active);
+				return;
 			}
-			return;
+			if (mStarting) {
+				postStatus(R.string.pref_preview_starting);
+				return;
+			}
+			holder = mHolder;
+			if (holder == null) {
+				postStatus(R.string.pref_preview_surface_pending);
+				return;
+			}
+			mStarting = true;
 		}
 		Thread t = new Thread(new Runnable() {
 			@Override
 			public void run() {
 				Camera camera = null;
+				boolean retryWhenSurfaceReady = false;
 				try {
 					int camId = backCameraId();
 					camera = Camera.open(camId);
@@ -293,12 +349,9 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 					} catch (Throwable ignored) {
 					}
 					synchronized (mLock) {
-						if (!mDialogVisible || !shouldPreview()) {
-							mStarting = false;
-						} else {
+						if (mDialogVisible && shouldPreview()) {
 							mCamera = camera;
 							camera = null;
-							mStarting = false;
 						}
 					}
 					if (camera != null) {
@@ -306,14 +359,30 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 							camera.release();
 						} catch (Throwable ignored) {
 						}
+						postStatus(R.string.pref_preview_disabled);
 						return;
 					}
+					// Re-read the holder under the lock: the surface may have been
+					// replaced or destroyed while Camera.open() was running, so a
+					// stale holder must never reach setPreviewDisplay(). A lost
+					// surface is retried from surfaceChanged()/surfaceCreated().
 					Camera adopted;
+					SurfaceHolder target;
+					boolean valid;
 					synchronized (mLock) {
 						adopted = mCamera;
+						target = mHolder;
+						valid = adopted != null && target != null && target == holder
+								&& mSurfaceReady;
+					}
+					if (!valid) {
+						releasePreview();
+						postStatus(R.string.pref_preview_surface_pending);
+						retryWhenSurfaceReady = true;
+						return;
 					}
 					try {
-						adopted.setPreviewDisplay(holder);
+						adopted.setPreviewDisplay(target);
 						adopted.startPreview();
 						postHideStatus();
 					} catch (Throwable th) {
@@ -327,10 +396,19 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 						} catch (Throwable ignored) {
 						}
 					}
+					postStatus(R.string.pref_preview_unavailable);
+				} finally {
+					// mStarting is cleared here only: releasePreview() must not clear
+					// it, otherwise a second Camera.open() can race one in flight.
 					synchronized (mLock) {
 						mStarting = false;
 					}
-					postStatus(R.string.pref_preview_unavailable);
+					// The surface event may have been consumed while we were opening,
+					// so start once more if the surface is ready again.
+					if (retryWhenSurfaceReady && mDialogVisible && shouldPreview()
+							&& mSurfaceReady) {
+						maybeStartPreview();
+					}
 				}
 			}
 		});
@@ -338,12 +416,18 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 		t.start();
 	}
 
+	/**
+	 * Stop and release the camera, if one is held.
+	 *
+	 * Deliberately does not touch mStarting: an open may still be in flight and
+	 * only that thread clears the flag in its finally block. Clearing it here
+	 * would let a second thread into Camera.open() while the first is running.
+	 */
 	private void releasePreview() {
 		Camera camera;
 		synchronized (mLock) {
 			camera = mCamera;
 			mCamera = null;
-			mStarting = false;
 		}
 		if (camera == null) {
 			return;
@@ -454,6 +538,18 @@ public class IpInformation extends DialogPreference implements SurfaceHolder.Cal
 
 	@Override
 	public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
+		Camera running;
+		synchronized (mLock) {
+			mHolder = holder;
+			mSurfaceReady = true;
+			running = mCamera;
+		}
+		// Start / retry here: the surface event can arrive while a Camera.open()
+		// is still in flight, so surfaceCreated() alone may be missed and the
+		// preview would stay black without a message.
+		if (running == null && mDialogVisible && shouldPreview()) {
+			maybeStartPreview();
+		}
 	}
 
 	private static int backCameraId() {

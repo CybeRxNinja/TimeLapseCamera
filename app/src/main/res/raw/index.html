@@ -104,6 +104,27 @@ td {
 	height: auto;
 }
 
+#previewWrap {
+	margin: 5px auto;
+	width: 50%;
+	max-width: 640px;
+	border-bottom: 1px solid var(--tlapse-color);
+	background-color: black;
+	text-align: center;
+}
+
+#previewNote {
+	color: white;
+	background-color: #3b3b3b;
+	padding: 0.3em;
+	border-bottom: 1px solid var(--tlapse-color);
+}
+
+#previewImg {
+	max-width: 100%;
+	min-height: 120px;
+}
+
 </style>
 
 <script>
@@ -380,11 +401,101 @@ function btAutoRefresh() {
 	}
 }
 
+/**
+ * 'stream' while /1/preview works, 'still' after it failed
+ */
+let g_previewMode = 'stream';
+
+/**
+ * Failed stream binds since the last successful one
+ */
+let g_previewFails = 0;
+
+/**
+ * Reconnect / fallback timers
+ */
+let g_previewRetryId = null;
+let g_previewStillId = null;
+
+/**
+ * Set the preview status line
+ */
+function previewNote(text) {
+	document.getElementById('previewNote').innerHTML = text;
+}
+
+/**
+ * Bind the preview image to the live MJPEG stream
+ */
+function previewBind() {
+	if (g_previewMode != 'stream') {
+		return;
+	}
+	previewNote('Live preview: connecting ...');
+	let img = document.getElementById('previewImg');
+	img.src = '/1/preview?t=' + Date.now();
+}
+
+/**
+ * Stream failed: retry a few times, then fall back to the captured still
+ */
+function previewStreamFailed() {
+	g_previewFails++;
+	if (g_previewFails > 4) {
+		g_previewMode = 'still';
+		previewNote('Live preview unavailable, showing the last captured image');
+		previewStill();
+		return;
+	}
+	previewNote('Live preview: reconnecting, attempt ' + g_previewFails + ' ...');
+	clearTimeout(g_previewRetryId);
+	g_previewRetryId = setTimeout(previewBind, 2000);
+}
+
+/**
+ * Fallback: show / refresh the last captured still
+ */
+function previewStill() {
+	let img = document.getElementById('previewImg');
+	img.src = '/1/current/img?t=' + Date.now();
+	if (g_previewStillId === null) {
+		g_previewStillId = setInterval(function() {
+			let current = document.getElementById('previewImg');
+			current.src = '/1/current/img?t=' + Date.now();
+		}, 5000);
+	}
+}
+
+/**
+ * Wire the preview image: stream it, reconnect on error, fall back to the
+ * still image, and rebind before the server closes the stream (10 min).
+ */
+function initPreview() {
+	let img = document.getElementById('previewImg');
+	img.onerror = function() {
+		if (g_previewMode == 'still') {
+			previewNote('No captured image yet, start a capture');
+		} else {
+			previewStreamFailed();
+		}
+	};
+	img.onload = function() {
+		if (g_previewMode == 'still') {
+			previewNote('Showing the last captured image, refreshes every 5s');
+			return;
+		}
+		g_previewFails = 0;
+		previewNote('Live preview: connected');
+	};
+	previewBind();
+	setInterval(previewBind, 8 * 60 * 1000);
+}
+
 </script>
 <title>TimeLapseCam</title>
 </head>
 
-<body>
+<body onload="initPreview()">
 	<h1>TimeLapseCam</h1>
 	<div class="button">
 		<div onclick="btStart()">START</div>
@@ -429,6 +540,10 @@ function btAutoRefresh() {
 				<td id="txtInterval">---</td>
 			</tr>
 		</table>
+	</div>
+	<div id="previewWrap">
+		<div id="previewNote">Live preview: connecting ...</div>
+		<img id="previewImg" alt="Live camera preview" />
 	</div>
 	<div id="contents">
 		<span id="infoRefesh">Refresh to get current image / No image to display</span>

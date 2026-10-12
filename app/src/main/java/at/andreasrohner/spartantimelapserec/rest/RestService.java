@@ -12,6 +12,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.wifi.WifiManager;
@@ -26,6 +29,10 @@ import android.os.PowerManager.WakeLock;
 import android.net.ConnectivityManager;
 
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -33,15 +40,18 @@ import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.SocketException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import androidx.core.app.NotificationCompat;
 import at.andreasrohner.spartantimelapserec.MainActivity;
 import at.andreasrohner.spartantimelapserec.R;
+import at.andreasrohner.spartantimelapserec.recorder.ImageRecorder;
 
 /**
  * HTTP REST API Service, for remote Control
@@ -419,6 +429,269 @@ public class RestService extends Service implements Runnable {
 		}
 
 		return port;
+	}
+
+	/**
+	 * Boundary of the multipart stream served on /1/preview
+	 */
+	private static final String PREVIEW_BOUNDARY = "timelapsepreviewframe";
+
+	/**
+	 * Max clients streaming /1/preview at the same time. One thread per
+	 * connection, so this also caps the number of blocked handler threads.
+	 */
+	private static final int PREVIEW_MAX_CLIENTS = 4;
+
+	/**
+	 * Clients currently streaming /1/preview
+	 */
+	private static final AtomicInteger previewClients = new AtomicInteger(0);
+
+	/**
+	 * Delay between two preview frames. Frames come from the capture interval,
+	 * in between the newest frame is repeated.
+	 */
+	private static final long PREVIEW_FRAME_INTERVAL_MS = 1000;
+
+	/**
+	 * A preview stream is closed after this time, so no connection can stay
+	 * open forever (the page rebinds before that and starts a fresh stream).
+	 */
+	private static final long PREVIEW_MAX_STREAM_MS = 10 * 60 * 1000;
+
+	/**
+	 * Upper bound for one frame; anything bigger is not a captured still
+	 */
+	private static final int PREVIEW_MAX_FRAME_BYTES = 4 * 1024 * 1024;
+
+	/**
+	 * Placeholder frame shown while nothing has been captured yet, built once
+	 */
+	private static byte[] previewPlaceholder;
+
+	/**
+	 * Serve /1/preview: a MJPEG (multipart/x-mixed-replace) stream of the newest
+	 * captured still - the exact same frame source the /1/img stills use
+	 * ({@link ImageRecorder#getCurrentRecordedImage()}). Nothing is grabbed from
+	 * the camera here, so recording and preview can never conflict.
+	 *
+	 * While no image has been captured yet a generated placeholder is streamed,
+	 * so the request always answers instead of hanging. The stream is bounded
+	 * (client cap, one frame per second, max duration) and stops when the
+	 * service stops: onDestroy() closes the session sockets, which ends the
+	 * loop on the next write. All failures are logged, never thrown - the web
+	 * path must not crash the REST server.
+	 *
+	 * @param out Output stream of the calling connection
+	 */
+	public static void servePreview(OutputStream out) {
+		if (previewClients.incrementAndGet() > PREVIEW_MAX_CLIENTS) {
+			previewClients.decrementAndGet();
+			try {
+				writePreviewError(out, "503 Service Unavailable", "Too many preview clients");
+			} catch (Throwable t) {
+				Log.d(TAG, "preview: rejecting client failed", t);
+			}
+			return;
+		}
+		try {
+			streamPreview(out);
+		} catch (Throwable t) {
+			Log.d(TAG, "preview: stream ended", t);
+		} finally {
+			previewClients.decrementAndGet();
+		}
+	}
+
+	/**
+	 * Write header, then one frame per tick until the stream times out
+	 *
+	 * @param out Output stream of the calling connection
+	 */
+	private static void streamPreview(OutputStream out) throws IOException {
+		byte[] placeholder = placeholderFrame();
+		if (placeholder == null) {
+			writePreviewError(out, "503 Service Unavailable", "Preview not available");
+			return;
+		}
+		writePreviewHeader(out);
+
+		long start = System.currentTimeMillis();
+		String frameKey = null;
+		byte[] still = null;
+		while (!Thread.currentThread().isInterrupted()
+				&& System.currentTimeMillis() - start < PREVIEW_MAX_STREAM_MS) {
+			// Stopping service: the socket is closed by terminateAllSessions(),
+			// this only avoids starting another frame in the meantime.
+			Thread server = serverThread;
+			if (server == null || !server.isAlive()) {
+				break;
+			}
+			File file = null;
+			try {
+				file = ImageRecorder.getCurrentRecordedImage();
+			} catch (Throwable ignored) {
+			}
+			byte[] frame = placeholder;
+			if (file != null && file.isFile()) {
+				String key = file.getAbsolutePath() + "@" + file.lastModified()
+						+ "#" + file.length();
+				if (!key.equals(frameKey)) {
+					byte[] data = readStill(file);
+					if (data != null) {
+						frameKey = key;
+						still = data;
+					}
+				}
+				if (still != null) {
+					frame = still;
+				}
+			} else {
+				frameKey = null;
+				still = null;
+			}
+			writeFrame(out, frame);
+			sleepQuietly(PREVIEW_FRAME_INTERVAL_MS);
+		}
+		// Closing boundary: the browser sees a finished stream
+		out.write(("--" + PREVIEW_BOUNDARY + "--\r\n").getBytes(StandardCharsets.ISO_8859_1));
+		out.flush();
+	}
+
+	/**
+	 * Read one captured still. The recorder publishes the file before it is
+	 * written, so empty, half written or oversized files are rejected.
+	 *
+	 * @param file Captured still
+	 * @return Complete JPEG bytes, or null when the file is not ready
+	 */
+	private static byte[] readStill(File file) {
+		try {
+			long length = file.length();
+			if (length <= 0 || length > PREVIEW_MAX_FRAME_BYTES) {
+				return null;
+			}
+			byte[] data = new byte[(int) length];
+			try (FileInputStream in = new FileInputStream(file)) {
+				int offset = 0;
+				while (offset < data.length) {
+					int read = in.read(data, offset, data.length - offset);
+					if (read < 0) {
+						return null;
+					}
+					offset += read;
+				}
+			}
+			// JPEG magic at start and end
+			if (data.length < 4 || (data[0] & 0xFF) != 0xFF || (data[1] & 0xFF) != 0xD8
+					|| (data[data.length - 2] & 0xFF) != 0xFF
+					|| (data[data.length - 1] & 0xFF) != 0xD9) {
+				return null;
+			}
+			return data;
+		} catch (Throwable t) {
+			return null;
+		}
+	}
+
+	/**
+	 * @return Placeholder frame for "nothing captured yet", or null on failure
+	 */
+	private static byte[] placeholderFrame() {
+		if (previewPlaceholder != null) {
+			return previewPlaceholder;
+		}
+		try {
+			Bitmap bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888);
+			Canvas canvas = new Canvas(bitmap);
+			canvas.drawColor(0xFF3B3B3B);
+			Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+			paint.setColor(0xFFE0E0E0);
+			paint.setTextAlign(Paint.Align.CENTER);
+			paint.setTextSize(30f);
+			canvas.drawText("No frames captured yet", 320f, 170f, paint);
+			paint.setTextSize(20f);
+			canvas.drawText("Start a capture to see the live preview", 320f, 212f, paint);
+			ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+			bitmap.compress(Bitmap.CompressFormat.JPEG, 85, buffer);
+			bitmap.recycle();
+			previewPlaceholder = buffer.toByteArray();
+			return previewPlaceholder;
+		} catch (Throwable t) {
+			Log.w(TAG, "preview: placeholder frame failed", t);
+			return null;
+		}
+	}
+
+	/**
+	 * Write the multipart response header
+	 *
+	 * @param out Output stream of the calling connection
+	 */
+	private static void writePreviewHeader(OutputStream out) throws IOException {
+		StringBuilder head = new StringBuilder();
+		head.append("HTTP/1.1 200 OK\r\n");
+		head.append("Content-Type: multipart/x-mixed-replace; boundary=");
+		head.append(PREVIEW_BOUNDARY).append("\r\n");
+		head.append("Cache-Control: no-store, no-cache, must-revalidate\r\n");
+		head.append("Pragma: no-cache\r\n");
+		head.append("Connection: close\r\n");
+		head.append("\r\n");
+		out.write(head.toString().getBytes(StandardCharsets.ISO_8859_1));
+		out.flush();
+	}
+
+	/**
+	 * Write one JPEG frame of the multipart stream
+	 *
+	 * @param out  Output stream of the calling connection
+	 * @param jpeg JPEG bytes
+	 */
+	private static void writeFrame(OutputStream out, byte[] jpeg) throws IOException {
+		StringBuilder head = new StringBuilder();
+		head.append("--").append(PREVIEW_BOUNDARY).append("\r\n");
+		head.append("Content-Type: image/jpeg\r\n");
+		head.append("Content-Length: ").append(jpeg.length).append("\r\n");
+		head.append("\r\n");
+		out.write(head.toString().getBytes(StandardCharsets.ISO_8859_1));
+		out.write(jpeg);
+		out.write("\r\n".getBytes(StandardCharsets.ISO_8859_1));
+		out.flush();
+	}
+
+	/**
+	 * Write a plain HTTP error, used when no stream can be started
+	 *
+	 * @param out     Output stream of the calling connection
+	 * @param status  Status line, e.g. "503 Service Unavailable"
+	 * @param message Body text
+	 */
+	private static void writePreviewError(OutputStream out, String status, String message)
+			throws IOException {
+		byte[] body = message.getBytes(StandardCharsets.UTF_8);
+		StringBuilder head = new StringBuilder();
+		head.append("HTTP/1.1 ").append(status).append("\r\n");
+		head.append("Content-Type: text/plain; charset=utf-8\r\n");
+		head.append("Content-Length: ").append(body.length).append("\r\n");
+		head.append("Connection: close\r\n");
+		head.append("\r\n");
+		out.write(head.toString().getBytes(StandardCharsets.ISO_8859_1));
+		out.write(body);
+		out.flush();
+	}
+
+	/**
+	 * Sleep between two frames. An interrupt stops the stream, the flag is kept
+	 * so the caller sees it.
+	 *
+	 * @param ms Milliseconds
+	 */
+	private static void sleepQuietly(long ms) {
+		try {
+			Thread.sleep(ms);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	/**
